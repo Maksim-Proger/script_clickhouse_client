@@ -1,0 +1,11 @@
+[project]
+name = "script-job-new"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+run-all = "project.launcher:main"
+nats-corn = "project.nats_corn.main:main"
+ch-client = "project.script_ch_client.main:main"
+ch-writer = "project.script_ch_writer.main:main"
