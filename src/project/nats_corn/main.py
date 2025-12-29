@@ -1,4 +1,4 @@
-from project.nats_corn.parser import parse_input
+from project.nats_corn.parser.parser import parse_input
 
 
 def main():
