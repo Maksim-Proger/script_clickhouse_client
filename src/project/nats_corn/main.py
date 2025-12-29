@@ -2,6 +2,7 @@ from project.nats_corn.parser.parser import parse_input
 
 
 def main():
+
     test_data = """
     192.168.0.1 10.0.0.2
     172.16.0.5
