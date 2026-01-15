@@ -1,7 +1,9 @@
 import time
 import threading
 import asyncio
+import json
 
+from nats.aio.client import Client as NATS
 from project.nats_corn.http.src1_client import AbClient
 from project.nats_corn.parser.parser import parse_input
 from project.nats_corn.nats_consumer import NatsDgConsumer
@@ -10,15 +12,22 @@ AB_INTERVAL: float = 20.0
 
 def ab_loop():
     ab_client = AbClient()
+    nc = NATS()
+    asyncio.run(nc.connect("nats://localhost:4222"))
 
     while True:
-        # AB — каждые 20 секунд
-        try:
-            raw_data_ab = ab_client.get_data()
-            ips_ab = parse_input(raw_data_ab)
-            print("AB:", ";".join(ips_ab))
-        except Exception as e:
-            print(f"AB error: {e}")
+        raw_data_ab = ab_client.get_data()
+        ips_ab = parse_input(raw_data_ab)
+
+        payload = {
+            "source": "AB",
+            "ips": ips_ab,
+        }
+
+        nc.publish(
+            "ch.write.raw",
+            json.dumps(payload).encode() # А зачем на тут json?
+        )
 
         time.sleep(AB_INTERVAL)
 
