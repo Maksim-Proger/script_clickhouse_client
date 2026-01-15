@@ -8,7 +8,7 @@ class DgHandler:
         self.client = DgClient()
         self.nc = nc
 
-    def handle(self) -> None:
+    async def handle(self) -> None:
         raw_data = self.client.get_data()
         ips = parse_input(raw_data)
 
@@ -17,7 +17,7 @@ class DgHandler:
             "ips": ips,
         }
 
-        self.nc.publish(
+        await self.nc.publish(
             "ch.write.raw",
             json.dumps(payload).encode() # А зачем на тут json?
         )

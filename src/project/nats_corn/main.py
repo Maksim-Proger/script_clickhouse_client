@@ -10,35 +10,42 @@ from project.nats_corn.nats_consumer import NatsDgConsumer
 
 AB_INTERVAL: float = 20.0
 
-def ab_loop():
+async def ab_loop(nc):
     ab_client = AbClient()
-    nc = NATS()
-    asyncio.run(nc.connect("nats://localhost:4222"))
 
     while True:
-        raw_data_ab = ab_client.get_data()
-        ips_ab = parse_input(raw_data_ab)
+        try:
+            raw_data_ab = ab_client.get_data()
+            ips_ab = parse_input(raw_data_ab)
 
-        payload = {
-            "source": "AB",
-            "ips": ips_ab,
-        }
+            payload = {
+                "source": "AB",
+                "ips": ips_ab,
+            }
 
-        nc.publish(
-            "ch.write.raw",
-            json.dumps(payload).encode() # А зачем на тут json?
-        )
+            # **await обязательно**, json нужен чтобы сериализовать список в строку
+            await nc.publish(
+                "ch.write.raw",
+                json.dumps(payload).encode()
+            )
+        except Exception as e:
+            # временно логируем
+            print(f"AB error: {e}")
 
-        time.sleep(AB_INTERVAL)
+        await asyncio.sleep(AB_INTERVAL)
 
-def start_nats_consumer():
-    consumer = NatsDgConsumer()
-    asyncio.run(consumer.start())
+async def main():
+    # создаём общий клиент NATS для AB и DG
+    nc = NATS()
+    await nc.connect("nats://localhost:4222")
 
+    # запускаем AB-цикл как задачу
+    asyncio.create_task(ab_loop(nc))
 
-def main():
-    threading.Thread(target=ab_loop, daemon=True).start()
-    start_nats_consumer()
+    # запускаем DG consumer
+    consumer = NatsDgConsumer(nc)
+    await consumer.start()
+
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
