@@ -19,6 +19,6 @@ class DgHandler:
 
         await self.nc.publish(
             "ch.write.raw",
-            json.dumps(payload).encode() # А зачем на тут json?
+            json.dumps(payload).encode()
         )
 
