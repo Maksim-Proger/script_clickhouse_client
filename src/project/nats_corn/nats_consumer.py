@@ -10,11 +10,9 @@ class NatsDgConsumer:
 
     async def start(self) -> None:
         async def callback(msg):
-            # команда пришла → обрабатываем DG
             await self.dg_handler.handle()
 
         await self.nc.subscribe("dg.load.command", cb=callback)
 
-        # держим consumer живым
         await asyncio.Event().wait()
 
