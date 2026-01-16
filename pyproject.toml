@@ -2,7 +2,12 @@
 name = "script-job-new"
 version = "0.1.0"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+    "requests",
+    "fastapi",
+    "uvicorn",
+    "nats-py",
+]
 
 [project.scripts]
 run-all = "project.launcher:main"
