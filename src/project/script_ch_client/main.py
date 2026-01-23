@@ -1,10 +1,20 @@
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 import uvicorn
+from fastapi.middleware.cors import CORSMiddleware
 
 from project.script_ch_client.handler import handle_dg_request, handle_ch_request
 
 app = FastAPI()
+
+# --- CORS ---
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/dg/request")
 async def dg_request():
