@@ -7,6 +7,7 @@ dependencies = [
     "fastapi",
     "uvicorn",
     "nats-py",
+    "httpx[http2]",
 ]
 
 [project.scripts]
