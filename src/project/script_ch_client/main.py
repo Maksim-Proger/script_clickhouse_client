@@ -13,10 +13,6 @@ async def dg_request():
 
 @app.get("/ch/read")
 async def ch_read(query: str):
-    """
-    Чтение данных из ClickHouse.
-    query: SQL-запрос в GET параметре
-    """
     result = await handle_ch_request(query)
     return JSONResponse(result)
 
