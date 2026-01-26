@@ -20,8 +20,9 @@ async def ab_loop(nc: NATS) -> None:
                 source="ipban"
             )
 
+            # Для теста
             payload = {
-                "ips": ips_ab,
+                "ipban": ips_ab,
             }
 
             await nc.publish(

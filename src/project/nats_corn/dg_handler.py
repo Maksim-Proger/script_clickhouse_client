@@ -15,8 +15,9 @@ class DgHandler:
             source="dosgate"
         )
 
+        # Для теста
         payload = {
-            "ips": ips,
+            "dosgate": ips,
         }
 
         await self.nc.publish(
