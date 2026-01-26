@@ -3,6 +3,7 @@ import re
 from datetime import datetime
 from typing import Any, List
 
+
 IP_REGEX = re.compile(
     r'\b(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)'
     r'(?:\.(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)){3}\b'
