@@ -1,6 +1,6 @@
 import json
 import re
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Any, List
 
 IP_REGEX = re.compile(
@@ -59,7 +59,7 @@ def _parse_datetime(value: Any) -> str:
             except ValueError:
                 pass
 
-    return datetime.utcnow().strftime(CLICKHOUSE_DT_FORMAT)
+    return datetime.now(UTC).strftime(CLICKHOUSE_DT_FORMAT)
 
 
 def parse_input(
@@ -77,7 +77,7 @@ def parse_input(
         _extract_records(parsed, records, source, profile)
 
     except Exception:
-        now = datetime.utcnow().strftime(CLICKHOUSE_DT_FORMAT)
+        now = datetime.now(UTC).strftime(CLICKHOUSE_DT_FORMAT)
         for ip in IP_REGEX.findall(data):
             records.append({
                 "ip_address": ip,
