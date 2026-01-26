@@ -15,20 +15,13 @@ async def ab_loop(nc: NATS) -> None:
     while True:
         try:
             raw_data_ab = ab_client.get_data()
-            ips_ab = parse_input(
-                raw_data_ab,
-                source="ipban"
-            )
+            ips_ab = parse_input(raw_data_ab,source="ipban")
 
-            # Для теста
-            payload = {
-                "ipban": ips_ab,
-            }
-
-            await nc.publish(
-                "ch.write.raw",
-                json.dumps(payload).encode()
-            )
+            for record in ips_ab:
+                await nc.publish(
+                    "ch.write.raw",
+                    json.dumps(record).encode()
+                )
 
         except Exception as e:
             # временно — stdout, позже заменим на logging

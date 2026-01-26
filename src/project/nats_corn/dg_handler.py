@@ -10,18 +10,11 @@ class DgHandler:
 
     async def handle(self) -> None:
         raw_data = self.client.get_data()
-        ips = parse_input(
-            raw_data,
-            source="dosgate"
-        )
+        ips = parse_input(raw_data,source="dosgate")
 
-        # Для теста
-        payload = {
-            "dosgate": ips,
-        }
-
-        await self.nc.publish(
-            "ch.write.raw",
-            json.dumps(payload).encode()
-        )
+        for record in ips:
+            await self.nc.publish(
+                "ch.write.raw",
+                json.dumps(record).encode()
+            )
 
