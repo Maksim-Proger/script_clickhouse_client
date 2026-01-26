@@ -8,6 +8,7 @@ dependencies = [
     "uvicorn",
     "nats-py",
     "httpx[http2]",
+    "clickhouse-driver"
 ]
 
 [project.scripts]
