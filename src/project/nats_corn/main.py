@@ -15,10 +15,12 @@ async def ab_loop(nc: NATS) -> None:
     while True:
         try:
             raw_data_ab = ab_client.get_data()
-            ips_ab = parse_input(raw_data_ab)
+            ips_ab = parse_input(
+                raw_data_ab,
+                source="ipban"
+            )
 
             payload = {
-                "source": "AB",
                 "ips": ips_ab,
             }
 

@@ -10,10 +10,12 @@ class DgHandler:
 
     async def handle(self) -> None:
         raw_data = self.client.get_data()
-        ips = parse_input(raw_data)
+        ips = parse_input(
+            raw_data,
+            source="dosgate"
+        )
 
         payload = {
-            "source": "DG",
             "ips": ips,
         }
 
