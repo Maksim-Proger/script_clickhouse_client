@@ -7,7 +7,7 @@ from project.script_ch_client.handler import handle_dg_request, handle_ch_reques
 
 app = FastAPI()
 
-# --- CORS ---
+# --- CORS --- Сделать более жесткий отбор!!!
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
