@@ -1,5 +1,4 @@
 import json
-
 from nats.aio.client import Client as NATS
 
 class NatsClient:

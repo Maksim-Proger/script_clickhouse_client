@@ -24,7 +24,7 @@ async def ab_loop(nc: NATS) -> None:
                 )
 
         except Exception as e:
-            # временно — stdout, позже заменим на logging
+            # временно — stdout, позже заменю на logging
             print(f"[NATS-CORN][AB] error: {e}")
 
         await asyncio.sleep(AB_INTERVAL)
