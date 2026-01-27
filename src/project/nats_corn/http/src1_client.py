@@ -1,10 +1,11 @@
 from project.common.http.client import BaseHttpClient
 
-# Для AB
-
-AB_URL = "http://192.168.100.13/common_ipban"
 
 class AbClient(BaseHttpClient):
+    def __init__(self, url: str):
+        super().__init__()
+        self.url = url
+
     def get_data(self) -> str:
-        return self.get(AB_URL)
+        return self.get(self.url)
 

@@ -8,14 +8,11 @@ IP_REGEX = re.compile(
     r'(?:\.(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)){3}\b'
 )
 
-CLICKHOUSE_DT_FORMAT = "%Y-%m-%d %H:%M:%S"
-
-def _extract_records(
-    obj: Any,
-    result: List[dict],
-    source: str,
-    profile: str
-) -> None:
+def _extract_records(obj: Any,
+                     result: List[dict],
+                     source: str,
+                     profile: str,
+                     dt_format: str) -> None:
     if isinstance(obj, dict):
         ip_candidates: List[str] = []
 
@@ -23,13 +20,8 @@ def _extract_records(
             if isinstance(v, str):
                 ip_candidates.extend(IP_REGEX.findall(v))
 
-        blocked_at_raw = (
-            obj.get("blocked_at")
-            or obj.get("date")
-            or obj.get("timestamp")
-        )
-
-        blocked_at = _parse_datetime(blocked_at_raw)
+        blocked_at_raw = obj.get("blocked_at") or obj.get("date") or obj.get("timestamp")
+        blocked_at = _parse_datetime(blocked_at_raw, dt_format)
 
         for ip in ip_candidates:
             result.append({
@@ -40,44 +32,34 @@ def _extract_records(
             })
 
         for v in obj.values():
-            _extract_records(v, result, source, profile)
+            _extract_records(v, result, source, profile, dt_format)
 
     elif isinstance(obj, list):
         for item in obj:
-            _extract_records(item, result, source, profile)
+            _extract_records(item, result, source, profile, dt_format)
 
-
-def _parse_datetime(value: Any) -> str:
+def _parse_datetime(value: Any, dt_format: str) -> str:
     if isinstance(value, str):
-        for fmt in (
-            "%Y-%m-%d %H:%M:%S",
-            "%Y-%m-%d",
-            "%Y-%m-%dT%H:%M:%S",
-        ):
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%Y-%m-%dT%H:%M:%S"):
             try:
-                return datetime.strptime(value, fmt).strftime(CLICKHOUSE_DT_FORMAT)
+                return datetime.strptime(value, fmt).strftime(dt_format)
             except ValueError:
                 pass
+    return datetime.now(timezone.utc).strftime(dt_format)
 
-    return datetime.now(timezone.utc).strftime(CLICKHOUSE_DT_FORMAT)
-
-
-def parse_input(
-    data: str,
-    source: str,
-    profile: str = ""
-) -> List[dict]:
+def parse_input(data: str,
+                source: str,
+                profile: str = "",
+                dt_format: str = "%Y-%m-%d %H:%M:%S") -> List[dict]:
     if not data or not data.strip():
         return []
 
     records: List[dict] = []
-
     try:
         parsed = json.loads(data)
-        _extract_records(parsed, records, source, profile)
-
+        _extract_records(parsed, records, source, profile, dt_format)
     except Exception:
-        now = datetime.now(timezone.utc).strftime(CLICKHOUSE_DT_FORMAT)
+        now = datetime.now(timezone.utc).strftime(dt_format)
         for ip in IP_REGEX.findall(data):
             records.append({
                 "ip_address": ip,
@@ -85,5 +67,4 @@ def parse_input(
                 "source": source,
                 "profile": profile
             })
-
     return records

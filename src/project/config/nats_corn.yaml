@@ -1,0 +1,25 @@
+ab_client:
+  url: "http://192.168.100.13/common_ipban"
+  interval: 20.0
+
+dg_client:
+  url: "http://192.168.100.13:3333/api/inspector/marks"
+  headers:
+    User-Arena: "first"
+    Content-Type: "application/json"
+    Authorization: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  payload:
+    data:
+      id: "201"
+      value: "1"
+      type: "shost"
+    name: "feed-gen"
+    action: "list"
+
+nats:
+  dg_consumer:
+    subject: "dg.load.command"
+    durable: "dg_consumer"
+
+parser:
+  clickhouse_dt_format: "%Y-%m-%d %H:%M:%S"
