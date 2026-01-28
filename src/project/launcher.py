@@ -10,8 +10,8 @@ CONFIG = load_yaml("src/project/config/nats_corn.yaml")
 def main() -> None:
     processes = [
         Process(target=nats_corn_main, args=(CONFIG,), name="nats-corn"),
-        Process(target=ch_client_main,  args=(CONFIG,), name="ch-client"),
-        Process(target=ch_writer_main,  args=(CONFIG,), name="ch-writer"),
+        Process(target=ch_client_main, name="ch-client"),
+        Process(target=ch_writer_main, name="ch-writer"),
     ]
 
     for p in processes:
