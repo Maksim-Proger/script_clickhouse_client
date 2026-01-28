@@ -3,14 +3,14 @@ name = "script-job-new"
 version = "0.1.0"
 requires-python = ">=3.10"
 dependencies = [
-    "requests",
     "fastapi",
     "uvicorn",
     "nats-py",
     "httpx[http2]",
     "clickhouse-driver",
-    "PyYAML"
+    "PyYAML",
 ]
+
 
 [project.scripts]
 run-all = "project.launcher:main"
