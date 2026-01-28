@@ -1,9 +1,11 @@
 import asyncio
 import json
+import signal
 from datetime import datetime
+from typing import Optional
 
-from nats.aio.client import Client as NatsClientLib
 from clickhouse_driver import Client as CHClient
+from nats.aio.client import Client as NatsClientLib
 
 
 class NatsWriterConsumer:
@@ -13,6 +15,18 @@ class NatsWriterConsumer:
         self.ch_cfg = config["clickhouse"]
         self.batch_cfg = config["batch"]
 
+        self.batch_size = self.batch_cfg["size"]
+        self.batch_interval = self.batch_cfg["interval_sec"]
+
+        self.buffer = []
+        self.lock = asyncio.Lock()
+
+        self.shutdown_event = asyncio.Event()
+        self.is_shutting_down = False
+
+        self.nc: Optional[NatsClientLib] = None
+        self.js = None
+
         self.ch_client = CHClient(
             host=self.ch_cfg["host"],
             port=self.ch_cfg["port"],
@@ -20,12 +34,6 @@ class NatsWriterConsumer:
             user=self.ch_cfg["user"],
             password=self.ch_cfg["password"],
         )
-
-        self.batch_size = self.batch_cfg["size"]
-        self.batch_interval = self.batch_cfg["interval_sec"]
-
-        self.buffer = []
-        self.lock = asyncio.Lock()
 
     async def flush_batch(self) -> None:
         async with self.lock:
@@ -38,18 +46,54 @@ class NatsWriterConsumer:
             self.ch_client.execute,
             """
             INSERT INTO blocked_ips
-            (blocked_at, ip_address, source, profile)
+                (blocked_at, ip_address, source, profile)
             VALUES
             """,
             batch
         )
 
+    def _on_signal(self) -> None:
+        asyncio.create_task(self.shutdown())
+
+    async def shutdown(self) -> None:
+        if self.is_shutting_down:
+            return
+
+        self.is_shutting_down = True
+
+        try:
+            await self.flush_batch()
+        except Exception:
+            pass
+
+        if self.nc:
+            try:
+                await self.nc.close()
+            except Exception:
+                pass
+
+        try:
+            self.ch_client.disconnect()
+        except Exception:
+            pass
+
+        self.shutdown_event.set()
+
     async def start(self) -> None:
-        nc = NatsClientLib()
-        await nc.connect(self.nats_cfg["url"])
-        js = nc.jetstream()
+        loop = asyncio.get_running_loop()
+
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.add_signal_handler(sig, self._on_signal)
+
+        self.nc = NatsClientLib()
+        await self.nc.connect(self.nats_cfg["url"])
+        self.js = self.nc.jetstream()
 
         async def callback(msg):
+            if self.is_shutting_down:
+                await msg.nak()
+                return
+
             try:
                 obj = json.loads(msg.data.decode())
 
@@ -76,20 +120,23 @@ class NatsWriterConsumer:
                 await msg.ack()
 
             except Exception:
-                await msg.ack()
+                await msg.nak()
 
-        await js.subscribe(
+        await self.js.subscribe(
             subject=self.nats_cfg["subject"],
             durable=self.nats_cfg["durable"],
             cb=callback
         )
 
         async def periodic_flush():
-            while True:
+            while not self.is_shutting_down:
                 await asyncio.sleep(self.batch_interval)
-                await self.flush_batch()
+                try:
+                    await self.flush_batch()
+                except Exception:
+                    pass
 
         await asyncio.gather(
-            asyncio.Event().wait(),
+            self.shutdown_event.wait(),
             periodic_flush()
         )

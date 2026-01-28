@@ -1,11 +1,10 @@
-from project.common.http.client import BaseHttpClient
+from project.common.http.async_client import BaseAsyncHttpClient
 
 
-class AbClient(BaseHttpClient):
-    def __init__(self, url: str):
-        super().__init__()
+class AbClient(BaseAsyncHttpClient):
+    def __init__(self, url: str, timeout: int = 10):
+        super().__init__(timeout=timeout)
         self.url = url
 
-    def get_data(self) -> str:
-        return self.get(self.url)
-
+    async def get_data(self) -> str:
+        return await self.get(self.url)

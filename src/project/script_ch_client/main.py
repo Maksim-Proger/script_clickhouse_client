@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -8,12 +10,20 @@ from project.script_ch_client.nats_client import NatsClient
 
 
 def main(config: dict) -> None:
-    app = FastAPI()
-
     nats_client = NatsClient(
         url=config["nats"]["url"],
         dg_subject=config["nats"]["dg_subject"]
     )
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        await nats_client.connect()
+        try:
+            yield
+        finally:
+            await nats_client.close()
+
+    app = FastAPI(lifespan=lifespan)
 
     app.add_middleware(
         CORSMiddleware,
