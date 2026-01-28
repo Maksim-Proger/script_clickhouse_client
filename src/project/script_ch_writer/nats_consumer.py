@@ -4,8 +4,8 @@ import signal
 from datetime import datetime
 from typing import Optional
 
-from clickhouse_driver import Client as CHClient
 from nats.aio.client import Client as NatsClientLib
+from clickhouse_driver import Client as CHClient
 
 
 class NatsWriterConsumer:
@@ -17,6 +17,7 @@ class NatsWriterConsumer:
 
         self.batch_size = self.batch_cfg["size"]
         self.batch_interval = self.batch_cfg["interval_sec"]
+        self.max_buffer_size = self.batch_cfg["max_buffer_size"]
 
         self.buffer = []
         self.lock = asyncio.Lock()
@@ -40,20 +41,22 @@ class NatsWriterConsumer:
             if not self.buffer:
                 return
             batch = self.buffer[:]
-            self.buffer.clear()
 
-        await asyncio.to_thread(
-            self.ch_client.execute,
-            """
-            INSERT INTO blocked_ips
+        try:
+            await asyncio.to_thread(
+                self.ch_client.execute,
+                """
+                INSERT INTO blocked_ips
                 (blocked_at, ip_address, source, profile)
-            VALUES
-            """,
-            batch
-        )
-
-    def _on_signal(self) -> None:
-        asyncio.create_task(self.shutdown())
+                VALUES
+                """,
+                batch
+            )
+        except Exception:
+            raise
+        else:
+            async with self.lock:
+                self.buffer = self.buffer[len(batch):]
 
     async def shutdown(self) -> None:
         if self.is_shutting_down:
@@ -79,11 +82,16 @@ class NatsWriterConsumer:
 
         self.shutdown_event.set()
 
+    def _on_signal(self) -> None:
+        asyncio.create_task(self.shutdown())
+
     async def start(self) -> None:
         loop = asyncio.get_running_loop()
-
         for sig in (signal.SIGINT, signal.SIGTERM):
-            loop.add_signal_handler(sig, self._on_signal)
+            loop.add_signal_handler(  # type: ignore[arg-type]
+                sig,
+                self._on_signal
+            )
 
         self.nc = NatsClientLib()
         await self.nc.connect(self.nats_cfg["url"])
@@ -93,6 +101,11 @@ class NatsWriterConsumer:
             if self.is_shutting_down:
                 await msg.nak()
                 return
+
+            async with self.lock:
+                if len(self.buffer) >= self.max_buffer_size:
+                    await msg.nak()
+                    return
 
             try:
                 obj = json.loads(msg.data.decode())
