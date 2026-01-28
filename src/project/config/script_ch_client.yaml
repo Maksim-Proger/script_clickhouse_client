@@ -1,0 +1,19 @@
+api:
+  host: "0.0.0.0"
+  port: 8000
+
+cors:
+  allow_origins: [ "*" ]
+  allow_methods: [ "*" ]
+  allow_headers: [ "*" ]
+  allow_credentials: true
+
+nats:
+  url: "nats://localhost:4222"
+  dg_subject: "dg.load.command"
+
+clickhouse:
+  host: "192.168.100.113"
+  http_port: 8123
+  timeout_sec: 10
+

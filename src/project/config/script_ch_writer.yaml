@@ -1,0 +1,15 @@
+nats:
+  url: "nats://localhost:4222"
+  subject: "ch.write.raw"
+  durable: "ch_writer"
+
+clickhouse:
+  host: "localhost"
+  port: 9000
+  database: "feedgen"
+  user: "default"
+  password: ""
+
+batch:
+  size: 100
+  interval_sec: 1.0

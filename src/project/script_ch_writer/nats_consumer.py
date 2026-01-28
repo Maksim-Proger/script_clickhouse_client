@@ -2,26 +2,32 @@ import asyncio
 import json
 from datetime import datetime
 
-from nats.aio.client import Client as NATS
+from nats.aio.client import Client as NatsClientLib
 from clickhouse_driver import Client as CHClient
 
-BATCH_SIZE = 100
-BATCH_INTERVAL = 1.0
 
 class NatsWriterConsumer:
 
-    def __init__(self):
+    def __init__(self, config: dict):
+        self.nats_cfg = config["nats"]
+        self.ch_cfg = config["clickhouse"]
+        self.batch_cfg = config["batch"]
+
         self.ch_client = CHClient(
-            host='localhost',
-            port=9000,
-            database='feedgen',
-            user='default',
-            password=''
+            host=self.ch_cfg["host"],
+            port=self.ch_cfg["port"],
+            database=self.ch_cfg["database"],
+            user=self.ch_cfg["user"],
+            password=self.ch_cfg["password"],
         )
+
+        self.batch_size = self.batch_cfg["size"]
+        self.batch_interval = self.batch_cfg["interval_sec"]
+
         self.buffer = []
         self.lock = asyncio.Lock()
 
-    async def flush_batch(self):
+    async def flush_batch(self) -> None:
         async with self.lock:
             if not self.buffer:
                 return
@@ -30,50 +36,57 @@ class NatsWriterConsumer:
 
         await asyncio.to_thread(
             self.ch_client.execute,
-            'INSERT INTO blocked_ips (blocked_at, ip_address, source, profile) VALUES',
+            """
+            INSERT INTO blocked_ips
+            (blocked_at, ip_address, source, profile)
+            VALUES
+            """,
             batch
         )
 
-    async def start(self):
-        nc = NATS()
-        await nc.connect("nats://localhost:4222")
+    async def start(self) -> None:
+        nc = NatsClientLib()
+        await nc.connect(self.nats_cfg["url"])
         js = nc.jetstream()
 
         async def callback(msg):
             try:
-                data = msg.data.decode()
-                obj = json.loads(data)
-                blocked_at_str = obj.get("blocked_at")
+                obj = json.loads(msg.data.decode())
+
+                blocked_at = obj.get("blocked_at")
                 ip_address = obj.get("ip_address")
-                if not blocked_at_str or not ip_address:
-                    print("Invalid message, skipping:", data)
+
+                if not blocked_at or not ip_address:
                     await msg.ack()
                     return
 
-                blocked_at = datetime.fromisoformat(blocked_at_str)
-                source = obj.get("source", "")
-                profile = obj.get("profile", "")
+                record = (
+                    datetime.fromisoformat(blocked_at),
+                    ip_address,
+                    obj.get("source", ""),
+                    obj.get("profile", ""),
+                )
 
                 async with self.lock:
-                    self.buffer.append((blocked_at, ip_address, source, profile))
+                    self.buffer.append(record)
 
-                if len(self.buffer) >= BATCH_SIZE:
+                if len(self.buffer) >= self.batch_size:
                     await self.flush_batch()
 
                 await msg.ack()
-            except Exception as e:
-                print("Error processing message:", e)
+
+            except Exception:
                 await msg.ack()
 
         await js.subscribe(
-            subject="ch.write.raw",
-            durable="ch_writer",
+            subject=self.nats_cfg["subject"],
+            durable=self.nats_cfg["durable"],
             cb=callback
         )
 
         async def periodic_flush():
             while True:
-                await asyncio.sleep(BATCH_INTERVAL)
+                await asyncio.sleep(self.batch_interval)
                 await self.flush_batch()
 
         await asyncio.gather(

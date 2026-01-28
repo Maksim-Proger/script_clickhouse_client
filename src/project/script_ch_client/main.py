@@ -1,38 +1,44 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
-from fastapi.middleware.cors import CORSMiddleware
 
 from project.script_ch_client.handler import handle_dg_request, handle_ch_request
+from project.script_ch_client.nats_client import NatsClient
 
-app = FastAPI()
 
-# --- CORS --- Сделать более жесткий отбор!!!
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+def main(config: dict) -> None:
+    app = FastAPI()
 
-@app.get("/dg/request")
-async def dg_request():
-    await handle_dg_request()
-    return JSONResponse({"status": "accepted"})
-
-@app.get("/ch/read")
-async def ch_read(query: str):
-    result = await handle_ch_request(query)
-    return JSONResponse(result)
-
-def main() -> None:
-    uvicorn.run(
-        "project.script_ch_client.main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=False
+    nats_client = NatsClient(
+        url=config["nats"]["url"],
+        dg_subject=config["nats"]["dg_subject"]
     )
 
-if __name__ == "__main__":
-    main()
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=config["cors"]["allow_origins"],
+        allow_credentials=config["cors"]["allow_credentials"],
+        allow_methods=config["cors"]["allow_methods"],
+        allow_headers=config["cors"]["allow_headers"],
+    )
+
+    @app.get("/dg/request")
+    async def dg_request():
+        await handle_dg_request(nats_client)
+        return JSONResponse({"status": "accepted"})
+
+    @app.get("/ch/read")
+    async def ch_read(query: str):
+        result = await handle_ch_request(
+            query,
+            config["clickhouse"]
+        )
+        return JSONResponse(result)
+
+    uvicorn.run(
+        app,
+        host=config["api"]["host"],
+        port=config["api"]["port"],
+        reload=False
+    )
