@@ -1,90 +1,35 @@
 import asyncio
-import json
-import signal
 from typing import Optional
-
 from nats.aio.client import Client as NatsClient
 
-from project.nats_corn.http.src1_client import AbClient
-from project.nats_corn.nats_consumer import NatsDgConsumer
-from project.nats_corn.parser.parser import parse_input
+from project.nats_corn.lifecycle import Lifecycle
+from project.nats_corn.ab_producer import AbProducer
+from project.nats_corn.dg_consumer import NatsDgConsumer
 
 
 def main(config: dict) -> None:
-    ab_interval = config["ab_client"]["interval"]
-    ab_url = config["ab_client"]["url"]
-
     async def run() -> None:
-        shutdown_event = asyncio.Event()
-        is_shutting_down = False
+        lifecycle = Lifecycle()
+        lifecycle.install_signal_handlers()
 
-        nc: Optional[NatsClient] = None
+        nc: Optional[NatsClient] = NatsClient()
+        await nc.connect(config["nats"]["url"])
 
-        async def shutdown():
-            nonlocal is_shutting_down
-            if is_shutting_down:
-                return
+        ab = AbProducer(nc, config, lifecycle)
+        dg = NatsDgConsumer(nc, config, lifecycle)
 
-            is_shutting_down = True
+        tasks = [
+            asyncio.create_task(ab.start()),
+            asyncio.create_task(dg.start()),
+        ]
 
-            if nc:
-                try:
-                    await nc.close()
-                except Exception:
-                    pass
+        await lifecycle.shutdown_event.wait()
 
-            shutdown_event.set()
+        for t in tasks:
+            t.cancel()
 
-        loop = asyncio.get_running_loop()
-        for sig in (signal.SIGINT, signal.SIGTERM):
-            loop.add_signal_handler(  # type: ignore[arg-type]
-                sig,
-                lambda: asyncio.create_task(shutdown())
-            )
+        await asyncio.gather(*tasks, return_exceptions=True)
 
-        nc = NatsClient()
-        await nc.connect(config.get("nats", {}).get("url", "nats://localhost:4222"))
-
-        ab_client = AbClient(ab_url)
-        await ab_client.connect()
-
-        async def ab_loop():
-            while not is_shutting_down:
-                try:
-                    raw_data_ab = await ab_client.get_data()
-
-                    ips_ab = parse_input(
-                        raw_data_ab,
-                        source="ipban",
-                        dt_format=config["parser"]["clickhouse_dt_format"]
-                    )
-
-                    for record in ips_ab:
-                        if is_shutting_down:
-                            break
-
-                        await nc.publish(
-                            "ch.write.raw",
-                            json.dumps(record).encode()
-                        )
-
-                except Exception as e:
-                    print(f"[NATS-CORN][AB] error: {e}")
-
-                await asyncio.sleep(ab_interval)
-
-        ab_task = asyncio.create_task(ab_loop())
-
-        consumer = NatsDgConsumer(nc, config, shutdown_event)
-        consumer_task = asyncio.create_task(consumer.start())
-
-        await shutdown_event.wait()
-
-        ab_task.cancel()
-        consumer_task.cancel()
-
-        await asyncio.gather(ab_task, consumer_task, return_exceptions=True)
-
-        await ab_client.close()
+        await nc.close()
 
     asyncio.run(run())
