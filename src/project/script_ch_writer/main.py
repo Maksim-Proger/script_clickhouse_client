@@ -1,5 +1,5 @@
 import asyncio
-from consumer import NatsWriterConsumer
+from project.script_ch_writer.consumer import NatsWriterConsumer
 
 
 def main(config: dict) -> None:

@@ -1,7 +1,7 @@
 import json
 from datetime import datetime
-
 from nats.aio.msg import Msg
+
 from batch_buffer import BatchBuffer
 from ch_writer import ClickHouseWriter
 
