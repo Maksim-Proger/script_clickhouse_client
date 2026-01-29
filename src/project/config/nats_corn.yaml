@@ -17,6 +17,7 @@ dg_client:
     action: "list"
 
 nats:
+  url: "nats://localhost:4222"
   dg_consumer:
     subject: "dg.load.command"
     durable: "dg_consumer"
