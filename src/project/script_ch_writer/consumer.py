@@ -4,9 +4,9 @@ from typing import Optional
 
 from nats.aio.client import Client as NatsClientLib
 
-from batch_buffer import BatchBuffer
-from ch_writer import ClickHouseWriter
-from nats_handler import NatsMessageHandler
+from project.script_ch_writer.batch_buffer import BatchBuffer
+from project.script_ch_writer.ch_writer import ClickHouseWriter
+from project.script_ch_writer.nats_handler import NatsMessageHandler
 
 
 class NatsWriterConsumer:
