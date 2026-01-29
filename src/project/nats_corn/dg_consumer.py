@@ -24,12 +24,20 @@ class NatsDgConsumer:
             return
 
         try:
+            payload = json.loads(msg.data.decode())
+
+            if payload.get("action") != "load":
+                await msg.ack()
+                return
+
             records = await self.handler.fetch()
+
             for record in records:
                 await self.nc.publish(
                     "ch.write.raw",
                     json.dumps(record).encode()
                 )
+
             await msg.ack()
         except Exception:
             await msg.nak()
