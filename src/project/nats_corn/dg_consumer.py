@@ -1,5 +1,5 @@
 import json
-from nats.aio.client import Client as NATS
+from nats.aio.client import Client as NatsClient
 
 from project.nats_corn.dg_handler import DgHandler
 from project.nats_corn.lifecycle import Lifecycle
@@ -8,7 +8,7 @@ from project.nats_corn.lifecycle import Lifecycle
 class NatsDgConsumer:
     def __init__(
         self,
-        nc: NATS,
+        nc: NatsClient,
         config: dict,
         lifecycle: Lifecycle,
     ):
