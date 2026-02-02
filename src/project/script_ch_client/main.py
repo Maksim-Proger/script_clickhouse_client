@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
@@ -45,6 +45,13 @@ def main(config: dict) -> None:
             config["clickhouse"]
         )
         return JSONResponse(result)
+
+    # Новый POST-эндпоинт для получения данных из веб-интерфейса
+    @app.post("/data/receive")
+    async def receive_data(request: Request):
+        data = await request.json()  # Получаем данные из тела запроса
+        print("Полученные данные:", data)  # Выводим данные в консоль
+        return JSONResponse({"status": "success", "received_data": data})
 
     uvicorn.run(
         app,
