@@ -32,10 +32,11 @@ class AbProducer:
                     if self.lifecycle.is_shutting_down:
                         break
 
-                    await self.nc.publish(
-                        "ch.write.raw",
-                        json.dumps(record).encode()
-                    )
+                    # Часть кода, которая отправляет данные из AB в NATS.
+                    # await self.nc.publish(
+                    #     "ch.write.raw",
+                    #     json.dumps(record).encode()
+                    # )
 
                 await asyncio.sleep(self.interval)
         finally:
