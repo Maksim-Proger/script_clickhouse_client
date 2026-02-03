@@ -1,8 +1,12 @@
+import json
 from project.script_ch_client.nats_client import NatsClient
 from project.script_ch_client.ch_handler import read_from_clickhouse
 
 async def handle_dg_request(nats_client: NatsClient) -> None:
     await nats_client.publish_dg_load()
+
+async def handle_web_data(nats_client: NatsClient, data: dict) -> None:
+    await nats_client.publish("data.received", json.dumps(data).encode())
 
 async def handle_ch_request(query: str, ch_cfg: dict) -> dict:
     return await read_from_clickhouse(

@@ -4,8 +4,9 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
+from nats_corn import NatsClient
 
-from project.script_ch_client.handler import handle_dg_request, handle_ch_request
+from project.script_ch_client.handler import handle_dg_request, handle_ch_request, handle_web_data
 from project.script_ch_client.nats_client import NatsClient
 
 
@@ -46,12 +47,20 @@ def main(config: dict) -> None:
         )
         return JSONResponse(result)
 
-    # Новый POST-эндпоинт для получения данных из веб-интерфейса
+
+
+    # @app.post("/data/receive")
+    # async def receive_data(request: Request):
+    #     data = await request.json()  # Получаем данные из тела запроса
+    #     print("Полученные данные:", data)  # Выводим данные в консоль
+    #     return JSONResponse({"status": "success", "received_data": data})
     @app.post("/data/receive")
     async def receive_data(request: Request):
-        data = await request.json()  # Получаем данные из тела запроса
-        print("Полученные данные:", data)  # Выводим данные в консоль
+        data = await request.json()
+        await handle_web_data(nats_client, data)
         return JSONResponse({"status": "success", "received_data": data})
+
+
 
     uvicorn.run(
         app,
