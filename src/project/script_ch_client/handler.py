@@ -1,4 +1,3 @@
-import json
 from project.script_ch_client.nats_client import NatsClient
 from project.script_ch_client.ch_handler import read_from_clickhouse
 

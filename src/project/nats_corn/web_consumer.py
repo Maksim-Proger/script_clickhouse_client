@@ -22,15 +22,17 @@ class NatsWebConsumer:
             return
         try:
             payload = json.loads(msg.data.decode())
-            # Прогоняем данные через парсер
-            data_str = json.dumps(payload)
             records = parse_input(
-                data=data_str,
-                source="web_interface",  # Источник для новых данных
+                data=json.dumps(payload),
+                source="web_interface",
                 dt_format=self.dt_format
             )
-            # Выводим в консоль
-            print("Parsed records from web interface:", records)
+            for record in records:
+                await self.nc.publish(
+                    "ch.write.raw",
+                    json.dumps(record).encode()
+                )
+            # print("Parsed and published to ch.write.raw:", records)
             await msg.ack()
         except Exception:
             await msg.nak()
