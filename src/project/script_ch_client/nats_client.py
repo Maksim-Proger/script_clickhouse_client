@@ -36,3 +36,12 @@ class NatsClient:
             self.dg_subject,
             json.dumps(payload).encode()
         )
+
+    async def publish_web_data(self, data: dict) -> None:
+        if not self.nc or not self.nc.is_connected:
+            raise RuntimeError("NATS is not connected")
+
+        await self.js.publish(
+            "data.received",
+            json.dumps(data).encode()
+        )

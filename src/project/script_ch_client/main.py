@@ -4,7 +4,6 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
-from nats_corn import NatsClient
 
 from project.script_ch_client.handler import handle_dg_request, handle_ch_request, handle_web_data
 from project.script_ch_client.nats_client import NatsClient
@@ -41,10 +40,7 @@ def main(config: dict) -> None:
 
     @app.get("/ch/read")
     async def ch_read(query: str):
-        result = await handle_ch_request(
-            query,
-            config["clickhouse"]
-        )
+        result = await handle_ch_request(query,config["clickhouse"])
         return JSONResponse(result)
 
 
