@@ -8,6 +8,10 @@ cors:
   allow_headers: [ "*" ]
   allow_credentials: true
 
+auth:
+  secret_key: "8aaeef9429c1336960630580842d4813a3666e27bc93c65df344fe31cfd37d42" # Для подписи JWT
+  static_token: "2104a794946fd04497cc113f7f15c2a418d784d7ef971fa15de3a90b477a07b" # Для ручной работы
+
 nats:
   url: "nats://localhost:4222"
   dg_subject: "dg.load.command"
