@@ -52,9 +52,10 @@ def main(config: dict) -> None:
         result = await handle_ch_request(query, config["clickhouse"])
         return JSONResponse(result)
 
-    @app.get("/dg/request")
-    async def dg_request(user: dict = Depends(get_current_user)):
-        await handle_dg_request(nats_client)
+    @app.post("/dg/request")  # Изменили GET на POST
+    async def dg_request(request: Request, user: dict = Depends(get_current_user)):
+        data = await request.json()
+        await handle_dg_request(nats_client, data)
         return JSONResponse({"status": "accepted"})
 
     @app.post("/data/receive")

@@ -1,4 +1,5 @@
 import json
+
 from nats.aio.client import Client as NatsClient
 
 from project.nats_corn.dg_handler import DgHandler
@@ -7,10 +8,10 @@ from project.nats_corn.lifecycle import Lifecycle
 
 class NatsDgConsumer:
     def __init__(
-        self,
-        nc: NatsClient,
-        config: dict,
-        lifecycle: Lifecycle,
+            self,
+            nc: NatsClient,
+            config: dict,
+            lifecycle: Lifecycle,
     ):
         self.nc = nc
         self.handler = DgHandler(config)
@@ -30,9 +31,14 @@ class NatsDgConsumer:
                 await msg.ack()
                 return
 
-            records = await self.handler.fetch()
+            ui_params = payload.get("params", {})
+
+            records = await self.handler.fetch(ui_params)
 
             for record in records:
+                if self.lifecycle.is_shutting_down:
+                    break
+
                 await self.nc.publish(
                     "ch.write.raw",
                     json.dumps(record).encode()

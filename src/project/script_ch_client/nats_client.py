@@ -26,11 +26,11 @@ class NatsClient:
             self.nc = None
             self.js = None
 
-    async def publish_dg_load(self) -> None:
+    async def publish_dg_load(self, data: dict) -> None:
         if not self.nc or not self.nc.is_connected:
             raise RuntimeError("NATS is not connected")
 
-        payload = {"action": "load"}
+        payload = {"action": "load", "params": data}
 
         await self.js.publish(
             self.dg_subject,
