@@ -9,7 +9,6 @@ class DgHandler:
     async def fetch(self, ui_params: dict) -> list[dict]:
         await self.client.connect()
         try:
-            # Передаем параметры в клиент
             raw_data = await self.client.get_data(ui_params)
             return parse_input(raw_data, source="dosgate")
         finally:

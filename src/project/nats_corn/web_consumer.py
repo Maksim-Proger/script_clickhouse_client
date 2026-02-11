@@ -12,8 +12,8 @@ class NatsWebConsumer:
     ):
         self.nc = nc
         self.dt_format = config["parser"]["clickhouse_dt_format"]
-        self.subject = "data.received"  # Subject, на который публикуются данные из script_ch_client
-        self.durable = "web_consumer_durable"  # Можно настроить в config, если нужно
+        self.subject = "data.received"
+        self.durable = "web_consumer_durable"
         self.lifecycle = lifecycle
 
     async def handle_msg(self, msg):
@@ -32,7 +32,6 @@ class NatsWebConsumer:
                     "ch.write.raw",
                     json.dumps(record).encode()
                 )
-            # print("Parsed and published to ch.write.raw:", records)
             await msg.ack()
         except Exception:
             await msg.nak()

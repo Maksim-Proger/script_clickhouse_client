@@ -9,11 +9,9 @@ class DgClient(BaseAsyncHttpClient):
         self.payload = config["dg_client"]["payload"]
 
     async def get_data(self, ui_params: dict) -> str:
-        # Объединяем дефолтный payload из конфига с данными из UI
         final_payload = self.payload.copy()
         if ui_params:
             final_payload.update(ui_params)
-            # Если нужно сохранить структуру "action: list", убедитесь в этом:
             final_payload["action"] = "list"
 
         return await self.post(
