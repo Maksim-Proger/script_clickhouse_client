@@ -1,5 +1,5 @@
 import asyncio
-
+import json
 from project.nats_corn.http.src1_client import AbClient
 from project.nats_corn.lifecycle import Lifecycle
 from project.nats_corn.parser.parser import parse_input
@@ -31,11 +31,11 @@ class AbProducer:
                     if self.lifecycle.is_shutting_down:
                         break
 
-                    # Часть кода, которая отправляет данные из AB в NATS.
-                    # await self.nc.publish(
-                    #     "ch.write.raw",
-                    #     json.dumps(record).encode()
-                    # )
+                    # Отправляем данные из AB в NATS.
+                    await self.nc.publish(
+                        "ch.write.raw",
+                        json.dumps(record).encode()
+                    )
 
                 await asyncio.sleep(self.interval)
         finally:
