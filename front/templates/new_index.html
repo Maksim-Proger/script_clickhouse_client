@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>DG Control</title>
+    <link rel="icon" href="data:;base64,iVBORw0KGgo=">
+    <link rel="stylesheet" href="../style/style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.5/xlsx.full.min.js"></script>
+</head>
+<body>
+
+<main class="login-page">
+    <section class="login-card">
+        <div class="login-logo">
+            <span>CH SERVICE</span>
+        </div>
+        <form class="login-form">
+            <label class="login-field">
+                <span>Логин</span>
+                <input type="text" name="login" placeholder="admin" required>
+            </label>
+            <label class="login-field">
+                <span>Пароль</span>
+                <input type="password" name="password" placeholder="admin" required>
+            </label>
+            <button type="submit" class="login-button" style="margin-top: 25px;">Вход</button>
+        </form>
+    </section>
+</main>
+
+<div class="app is-hidden">
+    <div class="sidebar">
+        <div class="profile-container">
+            <button class="profile-button" id="profileBtn">👤</button>
+            <div class="profile-menu is-hidden" id="profileMenu">
+                <div class="profile-info">
+                    <span class="profile-label">Логин:</span>
+                    <span class="profile-value" id="currentUser">admin</span>
+                </div>
+                <hr class="menu-divider">
+                <button class="logout-button" id="btnLogout">Выйти</button>
+            </div>
+        </div>
+
+        <button class="action" id="btnCH">Чтение данных из CH</button>
+        <button class="action" id="btnDG">Получить данные из DG</button>
+        <button class="action" id="btnUpload">Добавить данные</button>
+        <button class="action" id="btnExport">Экспорт данных</button>
+    </div>
+
+    <div class="content">
+        <div class="data-screen">
+            <div id="data-list"></div>
+        </div>
+    </div>
+</div>
+
+<dialog id="uploadDialog" class="modern-dialog">
+    <div class="dialog-content">
+        <h3>Загрузка файла</h3>
+        <p>Выберите XLSX файл для импорта.</p>
+        <div class="file-upload-wrapper">
+            <input type="file" id="fileInput" accept=".xlsx">
+        </div>
+        <div class="dialog-actions">
+            <button class="secondary-button" onclick="this.closest('dialog').close()">Отмена</button>
+            <button class="primary-button" id="btnUploadFile">Загрузить</button>
+        </div>
+    </div>
+</dialog>
+
+<dialog id="exportDialog" class="modern-dialog">
+    <div class="dialog-content">
+        <h3>Экспорт</h3>
+        <p>Выберите формат выгрузки.</p>
+        <div class="format-options" style="margin-bottom: 15px;">
+            <label class="radio-option">
+                <input type="radio" name="exportFormat" value="xlsx" checked>
+                <span>XLSX (Excel)</span>
+            </label>
+        </div>
+        <div class="dialog-actions">
+            <button class="secondary-button" onclick="this.closest('dialog').close()">Отмена</button>
+            <button class="primary-button" id="btnConfirmExport">Экспорт</button>
+        </div>
+    </div>
+</dialog>
+
+<dialog id="filterDialog" class="modern-dialog">
+    <div class="dialog-content">
+        <h3>Фильтры данных CH</h3>
+
+        <label class="login-field">
+            <span>Дата (blocked_at)</span>
+            <input type="date" id="filterDate">
+        </label>
+
+        <label class="login-field">
+            <span>IP адрес</span>
+            <input type="text" id="filterIP" placeholder="192.168.1.1">
+        </label>
+
+        <label class="login-field">
+            <span>Источник (source)</span>
+            <select id="filterSource">
+                <option value="">Все источники</option>
+                <option value="dosgate">dosgate</option>
+                <option value="ipban">ipban</option>
+                <option value="web_interface">web_interface</option>
+            </select>
+        </label>
+
+        <label class="login-field">
+            <span>Профиль</span>
+            <input type="text" id="filterProfile" placeholder="default">
+        </label>
+
+        <div class="dialog-actions" style="margin-top: 15px;">
+            <button class="secondary-button" onclick="this.closest('dialog').close()">Отмена</button>
+            <button class="primary-button" id="btnApplyFilters">Применить</button>
+        </div>
+    </div>
+</dialog>
+
+<dialog id="dgFilterDialog" class="modern-dialog">
+    <div class="dialog-content">
+        <h3>Параметры запроса к DG</h3>
+        <label class="login-field">
+            <span>Name</span>
+            <input type="text" id="dgName" value="feed-gen">
+        </label>
+
+        <label class="login-field">
+            <span>ID</span>
+            <input type="text" id="dgId" value="201">
+        </label>
+
+        <label class="login-field">
+            <span>Value</span>
+            <input type="text" id="dgValue" value="1">
+        </label>
+
+        <label class="login-field">
+            <span>Type</span>
+            <input type="text" id="dgType" value="shost">
+        </label>
+
+        <div class="dialog-actions" style="margin-top: 15px;">
+            <button class="secondary-button" onclick="this.closest('dialog').close()">Отмена</button>
+            <button class="primary-button" id="btnApplyDGFilters">Отправить запрос</button>
+        </div>
+    </div>
+</dialog>
+
+<script type="module" src="../scripts/script.js"></script>
+
+</body>
+</html>
