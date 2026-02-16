@@ -1,6 +1,6 @@
 import json
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta  # Добавили timedelta
 from typing import Any, List
 
 IP_REGEX = re.compile(
@@ -16,12 +16,25 @@ def _extract_records(obj: Any,
     if isinstance(obj, dict):
         ip_candidates: List[str] = []
 
-        for v in obj.values():
-            if isinstance(v, str):
+        for k, v in obj.items():
+            if k == "l3_src" and isinstance(v, str):
+                ip_candidates.append(v)
+            elif isinstance(v, str):
                 ip_candidates.extend(IP_REGEX.findall(v))
 
         blocked_at_raw = obj.get("blocked_at") or obj.get("date") or obj.get("timestamp")
-        blocked_at = _parse_datetime(blocked_at_raw, dt_format)
+
+        if blocked_at_raw:
+            blocked_at = _parse_datetime(blocked_at_raw, dt_format)
+        elif "age" in obj:
+            try:
+                age_seconds = int(obj["age"])
+                dt = datetime.now(timezone.utc) - timedelta(seconds=age_seconds)
+                blocked_at = dt.strftime(dt_format)
+            except (ValueError, TypeError):
+                blocked_at = datetime.now(timezone.utc).strftime(dt_format)
+        else:
+            blocked_at = datetime.now(timezone.utc).strftime(dt_format)
 
         for ip in ip_candidates:
             result.append({
@@ -38,6 +51,7 @@ def _extract_records(obj: Any,
         for item in obj:
             _extract_records(item, result, source, profile, dt_format)
 
+
 def _parse_datetime(value: Any, dt_format: str) -> str:
     if isinstance(value, str):
         for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%Y-%m-%dT%H:%M:%S"):
@@ -46,6 +60,7 @@ def _parse_datetime(value: Any, dt_format: str) -> str:
             except ValueError:
                 pass
     return datetime.now(timezone.utc).strftime(dt_format)
+
 
 def parse_input(data: str,
                 source: str,
@@ -59,6 +74,7 @@ def parse_input(data: str,
         parsed = json.loads(data)
         _extract_records(parsed, records, source, profile, dt_format)
     except Exception:
+        # Режим пылесоса для текста
         now = datetime.now(timezone.utc).strftime(dt_format)
         for ip in IP_REGEX.findall(data):
             records.append({
