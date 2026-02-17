@@ -32,10 +32,10 @@ class AbProducer:
                         break
 
                     # Отправляем данные из AB в NATS.
-                    await self.nc.publish(
-                        "ch.write.raw",
-                        json.dumps(record).encode()
-                    )
+                    # await self.nc.publish(
+                    #     "ch.write.raw",
+                    #     json.dumps(record).encode()
+                    # )
 
                 await asyncio.sleep(self.interval)
         finally:
