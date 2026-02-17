@@ -2,20 +2,6 @@ ab_client:
   url: "http://192.168.100.13/common_ipban"
   interval: 20.0
 
-dg_client:
-  url: "http://192.168.100.13:3333/api/inspector/marks"
-  headers:
-    User-Arena: "first"
-    Content-Type: "application/json"
-    Authorization: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6InN1cGVyYWRtaW4iLCJncm91cFRhZyI6InJvb3QiLCJpYXQiOjE3NzAyMzE0MDN9.8c1qn3Ig8DeILOoe-09Vq1vjHNSMsbikrUmfghaHlHw"
-  payload:
-    data:
-      id: "201"
-      value: "1"
-      type: "shost"
-    name: "feed-gen"
-    action: "list"
-
 nats:
   url: "nats://localhost:4222"
   dg_consumer:

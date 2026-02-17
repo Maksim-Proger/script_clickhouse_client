@@ -4,6 +4,7 @@ from nats.aio.client import Client as NatsClient
 
 from project.nats_corn.lifecycle import Lifecycle
 from project.nats_corn.ab_producer import AbProducer
+from project.nats_corn.dg_manager import DgSourceManager
 from project.nats_corn.dg_consumer import NatsDgConsumer
 from project.nats_corn.web_consumer import NatsWebConsumer
 
@@ -17,12 +18,16 @@ def main(config: dict) -> None:
         await nc.connect(config["nats"]["url"])
 
         ab = AbProducer(nc, config, lifecycle)
-        dg = NatsDgConsumer(nc, config, lifecycle)
+
+        dg_manager = DgSourceManager(nc, config, lifecycle)
+        dg_consumer = NatsDgConsumer(nc, config, lifecycle, dg_manager)
+
         web = NatsWebConsumer(nc, config, lifecycle)
 
         tasks = [
             asyncio.create_task(ab.start()),
-            asyncio.create_task(dg.start()),
+            asyncio.create_task(dg_manager.start()),
+            asyncio.create_task(dg_consumer.start()),
             asyncio.create_task(web.start()),
         ]
 
