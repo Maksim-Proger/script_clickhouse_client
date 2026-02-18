@@ -13,12 +13,10 @@ class DgSourceManager:
         self.nc = nc
         self.lifecycle = lifecycle
         self.client = DgClient()
-        # Индексируем источники по имени для быстрого доступа
         self.sources = {src["name"]: src for src in config.get("dg_sources", [])}
         self.dt_format = config["parser"]["clickhouse_dt_format"]
 
     async def _execute(self, name: str, url: str, headers: dict, payload: dict):
-        """Единый метод выполнения запроса и отправки результатов в NATS"""
         try:
             logger.info("action=execute_request profile=%s", name)
 
@@ -43,17 +41,11 @@ class DgSourceManager:
             logger.error("action=request_failed profile=%s error=%s", name, str(e))
 
     async def run_automated(self, name: str):
-        """Логика для Ozon: берем всё из конфига без изменений"""
         cfg = self.sources.get(name)
         if cfg:
             await self._execute(name, cfg["url"], cfg["headers"], cfg["payload"])
 
     async def run_manual(self, payload_from_front: dict):
-        """
-        Логика для feed-gen:
-        Берем шаблон из конфига и обновляем его данными с фронта,
-        если они не пустые.
-        """
         name = payload_from_front.get("name", "feed-gen")
         cfg = self.sources.get(name)
 

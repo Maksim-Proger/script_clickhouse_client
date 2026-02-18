@@ -1,7 +1,10 @@
 import json
+import logging
 from nats.aio.client import Client as NatsClient
 from project.nats_corn.lifecycle import Lifecycle
 from project.nats_corn.dg_manager import DgSourceManager
+
+logger = logging.getLogger("nats-corn")
 
 class NatsDgConsumer:
     def __init__(
@@ -23,28 +26,26 @@ class NatsDgConsumer:
             return
 
         try:
-            # Получаем данные, которые прислал фронтенд через script_ch_client
             payload = json.loads(msg.data.decode())
+            action = payload.get("action")
 
-            # Если пришла команда на загрузку данных
-            if payload.get("action") == "load":
-                # Передаем весь объект в менеджер для ручного выполнения
+            logger.info("action=msg_received subject=%s command=%s", self.subject, action)
+
+            if action == "load":
                 await self.dg_manager.run_manual(payload)
 
             await msg.ack()
         except Exception as e:
-            print(f"Error in NatsDgConsumer handle_msg: {e}")
+            logger.error("action=consumer_error subject=%s error=%s", self.subject, str(e))
             await msg.nak()
 
     async def start(self) -> None:
         js = self.nc.jetstream()
 
-        # Подписываемся на команды из NATS
         await js.subscribe(
             subject=self.subject,
             durable=self.durable,
             cb=self.handle_msg
         )
 
-        # Держим консьюмер запущенным до сигнала остановки
         await self.lifecycle.shutdown_event.wait()

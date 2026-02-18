@@ -1,7 +1,10 @@
 import json
+import logging
 from project.nats_corn.lifecycle import Lifecycle
 from nats.aio.client import Client as  NatsClient
 from project.nats_corn.parser.parser import parse_input
+
+logger = logging.getLogger("nats-corn")
 
 class NatsWebConsumer:
     def __init__(
@@ -22,18 +25,24 @@ class NatsWebConsumer:
             return
         try:
             payload = json.loads(msg.data.decode())
+
+            logger.debug("action=web_data_received size=%d", len(msg.data))
+
             records = parse_input(
                 data=json.dumps(payload),
                 source="web_interface",
                 dt_format=self.dt_format
             )
+
             for record in records:
                 await self.nc.publish(
                     "ch.write.raw",
                     json.dumps(record).encode()
                 )
             await msg.ack()
-        except Exception:
+
+        except Exception as e:
+            logger.error("action=web_consumer_failed error=%s", str(e))
             await msg.nak()
 
     async def start(self) -> None:

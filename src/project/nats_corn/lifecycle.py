@@ -1,6 +1,9 @@
 import asyncio
 import signal
+import logging
 
+
+logger = logging.getLogger("nats-corn")
 
 class Lifecycle:
     def __init__(self):
@@ -16,6 +19,7 @@ class Lifecycle:
             )
 
     def _on_signal(self) -> None:
+        logger.info("action=signal_received status=shutting_down")
         asyncio.create_task(self.shutdown())
 
     async def shutdown(self) -> None:
