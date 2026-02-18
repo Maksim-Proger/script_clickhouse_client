@@ -2,7 +2,7 @@ from multiprocessing import Process
 from project.nats_corn.main import main as nats_corn_main
 from project.script_ch_client.main import main as ch_client_main
 from project.script_ch_writer.main import main as ch_writer_main
-from project.common.config_loader.loader import load_yaml
+from project.utils.config_loader.loader import load_yaml
 
 
 CONFIG_NATS_CORN = load_yaml("src/project/config/nats_corn.yaml")

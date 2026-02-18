@@ -1,4 +1,4 @@
-from project.common.http.async_client import BaseAsyncHttpClient
+from project.utils.http.async_client import BaseAsyncHttpClient
 
 
 class AbClient(BaseAsyncHttpClient):

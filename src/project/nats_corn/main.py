@@ -7,9 +7,13 @@ from project.nats_corn.ab_producer import AbProducer
 from project.nats_corn.dg_manager import DgSourceManager
 from project.nats_corn.dg_consumer import NatsDgConsumer
 from project.nats_corn.web_consumer import NatsWebConsumer
+from project.utils.logging_formatter import setup_logging
 
 
 def main(config: dict) -> None:
+    logger = setup_logging("nats-corn")
+    logger.info("action=process_start status=initializing")
+
     async def run() -> None:
         lifecycle = Lifecycle()
         lifecycle.install_signal_handlers()

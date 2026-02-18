@@ -9,9 +9,13 @@ import project.script_ch_client.auth as auth
 from project.script_ch_client.auth import create_access_token, get_current_user
 from project.script_ch_client.handler import handle_dg_request, handle_ch_request, handle_web_data
 from project.script_ch_client.nats_client import NatsClient
+from project.utils.logging_formatter import setup_logging
 
 
 def main(config: dict) -> None:
+    logger = setup_logging("ch-client")
+    logger.info("action=process_start status=initializing")
+
     if "auth" in config:
         auth.SECRET_KEY = config["auth"].get("secret_key", auth.SECRET_KEY)
         auth.STATIC_API_TOKEN = config["auth"].get("static_token", auth.STATIC_API_TOKEN)

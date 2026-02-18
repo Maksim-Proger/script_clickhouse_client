@@ -1,9 +1,12 @@
 import asyncio
 import json
+import logging
 import copy
 from project.nats_corn.http.src2_client import DgClient
 from project.nats_corn.parser.parser import parse_input
 
+
+logger = logging.getLogger("nats-corn")
 
 class DgSourceManager:
     def __init__(self, nc, config: dict, lifecycle):
@@ -17,6 +20,8 @@ class DgSourceManager:
     async def _execute(self, name: str, url: str, headers: dict, payload: dict):
         """Единый метод выполнения запроса и отправки результатов в NATS"""
         try:
+            logger.info("action=execute_request profile=%s", name)
+
             raw_data = await self.client.fetch_data(url, headers, payload)
 
             records = parse_input(
@@ -26,12 +31,16 @@ class DgSourceManager:
                 dt_format=self.dt_format
             )
 
+            if not records:
+                logger.warning("action=parse_empty profile=%s message='No records found in response'", name)
+
             for record in records:
                 if self.lifecycle.is_shutting_down:
                     break
                 await self.nc.publish("ch.write.raw", json.dumps(record).encode())
+
         except Exception as e:
-            print(f"Error executing request for '{name}': {e}")
+            logger.error("action=request_failed profile=%s error=%s", name, str(e))
 
     async def run_automated(self, name: str):
         """Логика для Ozon: берем всё из конфига без изменений"""
@@ -49,28 +58,24 @@ class DgSourceManager:
         cfg = self.sources.get(name)
 
         if not cfg:
-            print(f"Manual request failed: profile '{name}' not found in config")
+            logger.error("action=profile_not_found profile=%s", name)
             return
 
-        # 1. Берем за основу payload из конфига (там есть action, name и дефолты)
         final_payload = copy.deepcopy(cfg["payload"])
-
-        # 2. Получаем данные из запроса фронтенда
         front_data = payload_from_front.get("data", {})
 
-        # 3. Слияние: если во фронте поле не пустое — заменяем дефолт
-        if "data" not in final_payload:
-            final_payload["data"] = {}
-
+        changed_keys = []
         for key, value in front_data.items():
-            # Проверяем, что значение — строка и она не пустая после trim
             if isinstance(value, str) and value.strip() != "":
                 final_payload["data"][key] = value.strip()
-            # Если это не строка (например, число), но оно передано — тоже берем
-            elif value is not None and not isinstance(value, str):
-                final_payload["data"][key] = value
+                changed_keys.append(key)
 
-        # Выполняем запрос с итоговым «склеенным» объектом
+        logger.info(
+            "action=manual_merge profile=%s changed_fields=%s",
+            name,
+            changed_keys if changed_keys else "none_all_defaults"
+        )
+
         await self._execute(
             name=name,
             url=cfg["url"],
@@ -79,16 +84,14 @@ class DgSourceManager:
         )
 
     async def _worker_loop(self, name: str, interval: int):
-        """Цикл для автоматических задач"""
         while not self.lifecycle.is_shutting_down:
             await self.run_automated(name)
             await asyncio.sleep(interval)
 
     async def start(self):
-        """Запуск фоновых воркеров при старте приложения"""
         await self.client.connect()
         for name, cfg in self.sources.items():
             interval = cfg.get("schedule", 0)
             if interval > 0:
-                print(f"Starting background worker for '{name}' (every {interval}s)")
+                logger.info("action=worker_init profile=%s interval=%ds", name, interval)
                 asyncio.create_task(self._worker_loop(name, interval))
