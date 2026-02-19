@@ -4,6 +4,7 @@ from fastapi import FastAPI, Request, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
+import logging
 
 import project.module_ch_client.auth as auth
 from project.module_ch_client.auth import create_access_token, get_current_user
@@ -11,10 +12,12 @@ from project.module_ch_client.handler import handle_dg_request, handle_ch_reques
 from project.module_ch_client.nats_client import NatsClient
 from project.utils.logging_formatter import setup_logging
 
+logger = logging.getLogger("ch-client")
 
 def main(config: dict) -> None:
-    logger = setup_logging("ch-client")
-    logger.info("action=process_start status=initializing")
+    setup_logging("ch-client")
+    logger.info("action=api_init status=starting host=%s port=%d",
+                config["api"]["host"], config["api"]["port"])
 
     if "auth" in config:
         auth.SECRET_KEY = config["auth"].get("secret_key", auth.SECRET_KEY)
@@ -28,10 +31,13 @@ def main(config: dict) -> None:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         await nats_client.connect()
+        logger.info("action=nats_connect status=success")
+
         try:
             yield
         finally:
             await nats_client.close()
+            logger.info("action=nats_disconnect status=success")
 
     app = FastAPI(lifespan=lifespan)
 
