@@ -2,8 +2,8 @@ import asyncio
 import json
 import logging
 import copy
-from project.nats_corn.http.src2_client import DgClient
-from project.nats_corn.parser.parser import parse_input
+from project.module_data_collector.http.src2_client import DgClient
+from project.module_data_collector.parser.parser import parse_input
 
 
 logger = logging.getLogger("nats-corn")

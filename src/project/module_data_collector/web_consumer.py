@@ -1,8 +1,8 @@
 import json
 import logging
-from project.nats_corn.lifecycle import Lifecycle
+from project.module_data_collector.lifecycle import Lifecycle
 from nats.aio.client import Client as  NatsClient
-from project.nats_corn.parser.parser import parse_input
+from project.module_data_collector.parser.parser import parse_input
 
 logger = logging.getLogger("nats-corn")
 

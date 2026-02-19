@@ -5,10 +5,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
 
-import project.script_ch_client.auth as auth
-from project.script_ch_client.auth import create_access_token, get_current_user
-from project.script_ch_client.handler import handle_dg_request, handle_ch_request, handle_web_data
-from project.script_ch_client.nats_client import NatsClient
+import project.module_ch_client.auth as auth
+from project.module_ch_client.auth import create_access_token, get_current_user
+from project.module_ch_client.handler import handle_dg_request, handle_ch_request, handle_web_data
+from project.module_ch_client.nats_client import NatsClient
 from project.utils.logging_formatter import setup_logging
 
 

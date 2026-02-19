@@ -1,9 +1,9 @@
 import asyncio
 import json
 import logging
-from project.nats_corn.http.src1_client import AbClient
-from project.nats_corn.lifecycle import Lifecycle
-from project.nats_corn.parser.parser import parse_input
+from project.module_data_collector.http.src1_client import AbClient
+from project.module_data_collector.lifecycle import Lifecycle
+from project.module_data_collector.parser.parser import parse_input
 
 logger = logging.getLogger("nats-corn")
 

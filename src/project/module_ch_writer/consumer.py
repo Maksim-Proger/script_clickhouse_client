@@ -4,9 +4,9 @@ from typing import Optional
 import logging
 from nats.aio.client import Client as NatsClientLib
 
-from project.script_ch_writer.batch_buffer import BatchBuffer
-from project.script_ch_writer.ch_writer import ClickHouseWriter
-from project.script_ch_writer.nats_handler import NatsMessageHandler
+from project.module_ch_writer.batch_buffer import BatchBuffer
+from project.module_ch_writer.ch_writer import ClickHouseWriter
+from project.module_ch_writer.nats_handler import NatsMessageHandler
 
 
 logger = logging.getLogger("ch-writer")

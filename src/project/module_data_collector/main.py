@@ -2,11 +2,11 @@ import asyncio
 from typing import Optional
 from nats.aio.client import Client as NatsClient
 
-from project.nats_corn.lifecycle import Lifecycle
-from project.nats_corn.ab_producer import AbProducer
-from project.nats_corn.dg_manager import DgSourceManager
-from project.nats_corn.dg_consumer import NatsDgConsumer
-from project.nats_corn.web_consumer import NatsWebConsumer
+from project.module_data_collector.lifecycle import Lifecycle
+from project.module_data_collector.ab_producer import AbProducer
+from project.module_data_collector.dg_manager import DgSourceManager
+from project.module_data_collector.dg_consumer import NatsDgConsumer
+from project.module_data_collector.web_consumer import NatsWebConsumer
 from project.utils.logging_formatter import setup_logging
 
 

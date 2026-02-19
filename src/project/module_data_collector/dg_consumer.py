@@ -1,8 +1,8 @@
 import json
 import logging
 from nats.aio.client import Client as NatsClient
-from project.nats_corn.lifecycle import Lifecycle
-from project.nats_corn.dg_manager import DgSourceManager
+from project.module_data_collector.lifecycle import Lifecycle
+from project.module_data_collector.dg_manager import DgSourceManager
 
 logger = logging.getLogger("nats-corn")
 
