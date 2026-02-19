@@ -1,7 +1,9 @@
 import asyncio
+import logging
 from clickhouse_driver import Client as CHClient
 from typing import List, Tuple
 
+logger = logging.getLogger("ch-writer")
 
 class ClickHouseWriter:
     def __init__(self, cfg: dict):
@@ -14,15 +16,21 @@ class ClickHouseWriter:
         )
 
     async def write(self, batch: List[Tuple]) -> None:
-        await asyncio.to_thread(
-            self.client.execute,
-            """
-            INSERT INTO blocked_ips
-            (blocked_at, ip_address, source, profile)
-            VALUES
-            """,
-            batch
-        )
+        batch_size = len(batch)
+        try:
+            await asyncio.to_thread(
+                self.client.execute,
+                """
+                INSERT INTO blocked_ips
+                (blocked_at, ip_address, source, profile)
+                VALUES
+                """,
+                batch
+            )
+            logger.info("action=db_write_success rows_inserted=%d", batch_size)
+        except Exception as e:
+            logger.error("action=db_write_failed batch_size=%d error=%s", batch_size, str(e))
+            raise
 
     def close(self) -> None:
         self.client.disconnect()

@@ -1,13 +1,15 @@
 import asyncio
 import signal
 from typing import Optional
-
+import logging
 from nats.aio.client import Client as NatsClientLib
 
 from project.script_ch_writer.batch_buffer import BatchBuffer
 from project.script_ch_writer.ch_writer import ClickHouseWriter
 from project.script_ch_writer.nats_handler import NatsMessageHandler
 
+
+logger = logging.getLogger("ch-writer")
 
 class NatsWriterConsumer:
     def __init__(self, config: dict):
@@ -44,41 +46,35 @@ class NatsWriterConsumer:
 
         try:
             await self.handler.flush()
-        except Exception:
-            pass
-
-        if self.nc:
-            try:
-                await self.nc.close()
-            except Exception:
-                pass
+        except Exception as e:
+            logger.error("action=shutdown_flush_failed error=%s", str(e))
 
         try:
+            if self.nc:
+                await self.nc.close()
+        finally:
             self.writer.close()
-        except Exception:
-            pass
-
-        self.shutdown_event.set()
+            self.shutdown_event.set()
 
     async def start(self) -> None:
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
-            loop.add_signal_handler(
-                sig,
-                self._on_signal
-            )
+            loop.add_signal_handler(sig, self._on_signal)
 
         self.nc = NatsClientLib()
         await self.nc.connect(self.nats_cfg["url"])
         self.js = self.nc.jetstream()
 
-        async def callback(msg):
-            await self.handler.handle(msg)
+        logger.info(
+            "action=worker_init subject=%s batch_size=%d",
+            self.nats_cfg["subject"],
+            self.batch_cfg["size"]
+        )
 
         await self.js.subscribe(
             subject=self.nats_cfg["subject"],
             durable=self.nats_cfg["durable"],
-            cb=callback
+            cb=lambda msg: self.handler.handle(msg)
         )
 
         async def periodic_flush():
@@ -86,10 +82,7 @@ class NatsWriterConsumer:
                 await asyncio.sleep(self.batch_cfg["interval_sec"])
                 try:
                     await self.handler.flush()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.error("action=periodic_flush_failed error=%s", str(e))
 
-        await asyncio.gather(
-            self.shutdown_event.wait(),
-            periodic_flush()
-        )
+        await asyncio.gather(self.shutdown_event.wait(), periodic_flush())
