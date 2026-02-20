@@ -1,6 +1,6 @@
 import asyncio
 
-from project.module_ch_writer.consumer import NatsWriterConsumer
+from project.module_ch_loader.consumer import NatsWriterConsumer
 from project.utils.logging_formatter import setup_logging
 
 

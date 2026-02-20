@@ -1,13 +1,13 @@
 from multiprocessing import Process
 from project.module_data_collector.main import main as nats_corn_main
-from project.module_ch_client.main import main as ch_client_main
-from project.module_ch_writer.main import main as ch_writer_main
+from project.module_ch_api_gateway.main import main as ch_client_main
+from project.module_ch_loader.main import main as ch_writer_main
 from project.utils.config_loader.loader import load_yaml
 
 
 CONFIG_NATS_CORN = load_yaml("src/project/config/module_data_collector.yaml")
-CONFIG_CH_CLIENT = load_yaml("src/project/config/module_ch_client.yaml")
-CONFIG_CH_WRITER = load_yaml("src/project/config/module_ch_writer.yaml")
+CONFIG_CH_CLIENT = load_yaml("src/project/config/module_ch_api_gateway.yaml")
+CONFIG_CH_WRITER = load_yaml("src/project/config/module_ch_loader.yaml")
 
 DG_SOURCES = load_yaml("src/project/config/dg_sources.yaml")
 

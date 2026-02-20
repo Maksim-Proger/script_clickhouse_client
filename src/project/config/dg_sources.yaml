@@ -1,6 +1,4 @@
-# Список всех источников для работы с Dosgate
 dg_sources:
-  # Профиль для ручного запуска (через API/NATS)
   - name: "feed-gen"
     url: "http://192.168.100.13:3333/api/inspector/marks"
     schedule: 0   # Запускается только при поступлении команды
@@ -16,7 +14,6 @@ dg_sources:
       name: "feed-gen"
       action: "list"
 
-  # Первый профиль Ozon (фоновый опрос раз в 5 минут)
   - name: "ozon"
     url: "http://192.168.100.13:3333/api/inspector/marks"
     schedule: 300    # Интервал в секундах
@@ -32,7 +29,6 @@ dg_sources:
       name: "ozon"
       action: "list"
 
-  # Второй профиль Ozon-API (фоновый опрос раз в 5 минут)
   - name: "ozon-api"
     url: "http://192.168.100.13:3333/api/inspector/marks"
     schedule: 300

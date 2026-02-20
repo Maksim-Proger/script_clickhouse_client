@@ -3,8 +3,8 @@ import logging
 from datetime import datetime
 from nats.aio.msg import Msg
 
-from project.module_ch_writer.batch_buffer import BatchBuffer
-from project.module_ch_writer.ch_writer import ClickHouseWriter
+from project.module_ch_loader.batch_buffer import BatchBuffer
+from project.module_ch_loader.ch_writer import ClickHouseWriter
 
 
 logger = logging.getLogger("ch-writer")
