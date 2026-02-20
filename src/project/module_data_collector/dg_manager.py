@@ -35,6 +35,7 @@ class DgSourceManager:
             for record in records:
                 if self.lifecycle.is_shutting_down:
                     break
+                # Отправляем данные из DG в NATS.
                 await self.nc.publish("ch.write.raw", json.dumps(record).encode())
 
         except Exception as e:

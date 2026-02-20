@@ -10,13 +10,11 @@ def setup_logging(name, level=logging.INFO):
     logger = logging.getLogger(name)
     logger.setLevel(level)
 
-    # Очищаем старые хендлеры, если они есть у логгера с этим именем
     if logger.handlers:
         logger.handlers.clear()
 
     logger.addHandler(handler)
 
-    # Чтобы лог не дублировался, если настроен еще и root logger
     logger.propagate = False
 
     return logger

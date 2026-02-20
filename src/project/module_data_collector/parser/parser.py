@@ -74,7 +74,6 @@ def parse_input(data: str,
         parsed = json.loads(data)
         _extract_records(parsed, records, source, profile, dt_format)
     except Exception:
-        # Режим пылесоса для текста
         now = datetime.now(timezone.utc).strftime(dt_format)
         for ip in IP_REGEX.findall(data):
             records.append({
