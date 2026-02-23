@@ -1,45 +1,24 @@
-dg_sources:
-  - name: "feed-gen"
-    url: "http://192.168.100.13:3333/api/inspector/marks"
-    schedule: 0   # Запускается только при поступлении команды
-    headers:
-      User-Arena: "first"
-      Content-Type: "application/json"
-      Authorization: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6InN1cGVyYWRtaW4iLCJncm91cFRhZyI6InJvb3QiLCJpYXQiOjE3NzAyMzE0MDN9.8c1qn3Ig8DeILOoe-09Vq1vjHNSMsbikrUmfghaHlHw"
-    payload:
-      data:
-        id: "201"
-        value: "1"
-        type: "shost"
-      name: "feed-gen"
-      action: "list"
+# Общие настройки для всех запросов (и ручных, и автоматических)
+dg_defaults:
+  url: "http://192.168.100.13:3333/api/inspector/marks"
+  action: "list"
+  headers:
+    User-Arena: "first"
+    Content-Type: "application/json"
+    Authorization: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6InN1cGVyYWRtaW4iLCJncm91cFRhZyI6InJvb3QiLCJpYXQiOjE3NzAyMzE0MDN9.8c1qn3Ig8DeILOoe-09Vq1vjHNSMsbikrUmfghaHlHw"
 
+# Только источники для автоматического сбора по расписанию
+dg_sources:
   - name: "ozon"
-    url: "http://192.168.100.13:3333/api/inspector/marks"
-    schedule: 300    # Интервал в секундах
-    headers:
-      User-Arena: "first"
-      Content-Type: "application/json"
-      Authorization: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6InN1cGVyYWRtaW4iLCJncm91cFRhZyI6InJvb3QiLCJpYXQiOjE3NzAyMzE0MDN9.8c1qn3Ig8DeILOoe-09Vq1vjHNSMsbikrUmfghaHlHw"
-    payload:
-      data:
-        id: "5,6"
-        type: "shost"
-        expire: -1
-      name: "ozon"
-      action: "list"
+    schedule: 300
+    payload_data:
+      id: "5,6"
+      type: "shost"
+      expire: -1
 
   - name: "ozon-api"
-    url: "http://192.168.100.13:3333/api/inspector/marks"
     schedule: 300
-    headers:
-      User-Arena: "first"
-      Content-Type: "application/json"
-      Authorization: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6InN1cGVyYWRtaW4iLCJncm91cFRhZyI6InJvb3QiLCJpYXQiOjE3NzAyMzE0MDN9.8c1qn3Ig8DeILOoe-09Vq1vjHNSMsbikrUmfghaHlHw"
-    payload:
-      data:
-        id: "3,4"
-        type: "shost"
-        expire: -1
-      name: "ozon-api"
-      action: "list"
+    payload_data:
+      id: "3,4"
+      type: "shost"
+      expire: -1

@@ -75,26 +75,20 @@ document.addEventListener("DOMContentLoaded", () => {
         try {
             container.innerHTML = "<p style='padding:20px'>Загрузка...</p>";
 
-            const fDate = document.getElementById("filterDate").value;
-            const fIP = document.getElementById("filterIP").value.trim();
-            const fSource = document.getElementById("filterSource").value;
-            const fProfile = document.getElementById("filterProfile").value.trim();
+            const filters = {
+                date: document.getElementById("filterDate").value,
+                ip: document.getElementById("filterIP").value.trim(),
+                source: document.getElementById("filterSource").value,
+                profile: document.getElementById("filterProfile").value.trim()
+            };
 
-            let conditions = [];
-            if (fDate) conditions.push(`toDate(blocked_at) = '${fDate}'`);
-            if (fIP) conditions.push(`ip_address = '${fIP}'`);
-            if (fSource) conditions.push(`source = '${fSource}'`);
-            if (fProfile) conditions.push(`profile = '${fProfile}'`);
+            const response = await Auth.authFetch(`${Auth.API_BASE}/ch/read`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(filters)
+            });
 
-            const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : "";
-            const sqlQuery = `SELECT * FROM feedgen.blocked_ips ${whereClause} ORDER BY blocked_at DESC LIMIT 500`;
-
-            const encodedSql = encodeURIComponent(sqlQuery);
-            const url = `${Auth.API_BASE}/ch/read?query=${encodedSql}`;
-
-            const response = await Auth.authFetch(url);
             const result = await response.json();
-
             exportedData = result.data || result;
 
             if (!Array.isArray(exportedData)) throw new Error("Некорректный ответ сервера");
@@ -122,6 +116,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     async function requestDG() {
         try {
+            // Формируем структуру, которую ожидает DgSourceManager.run_manual
             const payload = {
                 name: document.getElementById("dgName").value.trim(),
                 data: {
@@ -131,14 +126,29 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
             };
 
+            console.log("Sending manual request to DG:", payload);
+
+            // Отправляем POST запрос на эндпоинт API Gateway
             const response = await Auth.authFetch(`${Auth.API_BASE}/dg/request`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json"
+                },
                 body: JSON.stringify(payload)
             });
 
-            if (response.ok) alert("Запрос в DG отправлен с параметрами");
-        } catch (e) { console.error(e); }
+            if (response.ok) {
+                alert(`Запрос для профиля "${payload.name}" успешно отправлен в очередь.`);
+            } else {
+                const errData = await response.json();
+                alert(`Ошибка при отправке запроса: ${errData.detail || response.statusText}`);
+            }
+        } catch (e) {
+            console.error("DG Request Error:", e);
+            if (e.message !== "Unauthorized") {
+                alert("Не удалось отправить запрос в DG. Проверьте соединение с сервером.");
+            }
+        }
     }
 
     async function uploadFile() {
@@ -192,8 +202,8 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     document.getElementById("btnUpload").addEventListener("click", () => uploadDialog.showModal());
-    document.getElementById("btnExport").addEventListener("click", () => exportDialog.showModal());
-
     btnUploadFile.addEventListener("click", uploadFile);
+
+    document.getElementById("btnExport").addEventListener("click", () => exportDialog.showModal());
     btnConfirmExport.addEventListener("click", exportData);
 });

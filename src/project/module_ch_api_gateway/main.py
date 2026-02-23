@@ -11,6 +11,7 @@ from project.module_ch_api_gateway.auth import create_access_token, get_current_
 from project.module_ch_api_gateway.handler import handle_dg_request, handle_ch_request, handle_web_data
 from project.module_ch_api_gateway.nats_client import NatsClient
 from project.utils.logging_formatter import setup_logging
+from project.module_ch_api_gateway.ch_handler import CHReadFilters
 
 logger = logging.getLogger("ch-client")
 
@@ -57,9 +58,9 @@ def main(config: dict) -> None:
             return {"access_token": token, "token_type": "bearer"}
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    @app.get("/ch/read")
-    async def ch_read(query: str, user: dict = Depends(get_current_user)):
-        result = await handle_ch_request(query, config["clickhouse"])
+    @app.post("/ch/read")
+    async def ch_read(filters: CHReadFilters, user: dict = Depends(get_current_user)):
+        result = await handle_ch_request(filters, config["clickhouse"])
         return JSONResponse(result)
 
     @app.post("/dg/request")

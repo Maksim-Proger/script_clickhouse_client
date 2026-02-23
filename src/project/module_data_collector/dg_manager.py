@@ -1,20 +1,23 @@
 import asyncio
 import json
 import logging
-import copy
+
 from project.module_data_collector.http.src2_client import DgClient
 from project.module_data_collector.parser.parser import parse_input
 
-
 logger = logging.getLogger("nats-corn")
+
 
 class DgSourceManager:
     def __init__(self, nc, config: dict, lifecycle):
         self.nc = nc
         self.lifecycle = lifecycle
         self.client = DgClient()
+
+        self.defaults = config.get("dg_defaults", {})
+
         self.sources = {src["name"]: src for src in config.get("dg_sources", [])}
-        self.dt_format = config["parser"]["clickhouse_dt_format"]
+        self.dt_format = config.get("parser", {}).get("clickhouse_dt_format", "%Y-%m-%d %H:%M:%S")
 
     async def _execute(self, name: str, url: str, headers: dict, payload: dict):
         try:
@@ -35,7 +38,7 @@ class DgSourceManager:
             for record in records:
                 if self.lifecycle.is_shutting_down:
                     break
-                # Отправляем данные из DG в NATS.
+                # Отправляем нормализованные данные в ClickHouse loader через NATS
                 await self.nc.publish("ch.write.raw", json.dumps(record).encode())
 
         except Exception as e:
@@ -43,36 +46,44 @@ class DgSourceManager:
 
     async def run_automated(self, name: str):
         cfg = self.sources.get(name)
-        if cfg:
-            await self._execute(name, cfg["url"], cfg["headers"], cfg["payload"])
-
-    async def run_manual(self, payload_from_front: dict):
-        name = payload_from_front.get("name", "feed-gen")
-        cfg = self.sources.get(name)
-
         if not cfg:
-            logger.error("action=profile_not_found profile=%s", name)
             return
 
-        final_payload = copy.deepcopy(cfg["payload"])
-        front_data = payload_from_front.get("data", {})
-
-        changed_keys = []
-        for key, value in front_data.items():
-            if isinstance(value, str) and value.strip() != "":
-                final_payload["data"][key] = value.strip()
-                changed_keys.append(key)
-
-        logger.info(
-            "action=manual_merge profile=%s changed_fields=%s",
-            name,
-            changed_keys if changed_keys else "none_all_defaults"
-        )
+        final_payload = {
+            "action": self.defaults.get("action", "list"),
+            "name": name,
+            "data": cfg.get("payload_data", {})
+        }
 
         await self._execute(
             name=name,
-            url=cfg["url"],
-            headers=cfg["headers"],
+            url=self.defaults.get("url"),
+            headers=self.defaults.get("headers"),
+            payload=final_payload
+        )
+
+    async def run_manual(self, payload_from_front: dict):
+        ui_params = payload_from_front.get("params", {})
+
+        profile_name = ui_params.get("name", "manual-request")
+        front_data_filters = ui_params.get("data", {})
+
+        final_payload = {
+            "action": self.defaults.get("action", "list"),
+            "name": profile_name,
+            "data": front_data_filters
+        }
+
+        logger.info(
+            "action=manual_request_start profile=%s data_keys=%s",
+            profile_name,
+            list(front_data_filters.keys())
+        )
+
+        await self._execute(
+            name=profile_name,
+            url=self.defaults.get("url"),
+            headers=self.defaults.get("headers"),
             payload=final_payload
         )
 
