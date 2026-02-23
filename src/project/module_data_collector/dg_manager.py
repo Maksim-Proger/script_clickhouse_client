@@ -5,7 +5,7 @@ import logging
 from project.module_data_collector.http.src2_client import DgClient
 from project.module_data_collector.parser.parser import parse_input
 
-logger = logging.getLogger("nats-corn")
+logger = logging.getLogger("data_collector")
 
 
 class DgSourceManager:
