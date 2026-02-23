@@ -71,12 +71,38 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     window.addEventListener("click", () => profileMenu.classList.add("is-hidden"));
 
+
+    function buildDateTime(dateId, timeId, defaultTime = "00:00:00") {
+        const d = document.getElementById(dateId).value;
+        const t = document.getElementById(timeId).value;
+
+        if (!d && t) {
+            throw new Error("Нельзя указать время без даты");
+        }
+        if (!d) return null;
+
+        // Если дата есть, а время нет — ставим дефолт (например, начало суток)
+        return `${d} ${t || defaultTime}`;
+    }
     async function requestCH() {
         try {
             container.innerHTML = "<p style='padding:20px'>Загрузка...</p>";
 
+            // Собираем значения с проверкой логики
+            const exactMatch = buildDateTime("filterDate", "filterTime");
+            const rangeStart = buildDateTime("filterDateFrom", "filterTimeFrom", "00:00:00");
+            const rangeEnd = buildDateTime("filterDateTo", "filterTimeTo", "23:59:59");
+
             const filters = {
-                date: document.getElementById("filterDate").value,
+                // Точное совпадение (если заполнено)
+                blocked_at: exactMatch,
+
+                // Период (объект с границами)
+                period: (rangeStart || rangeEnd) ? {
+                    from: rangeStart,
+                    to: rangeEnd
+                } : null,
+
                 ip: document.getElementById("filterIP").value.trim(),
                 source: document.getElementById("filterSource").value,
                 profile: document.getElementById("filterProfile").value.trim()
@@ -96,6 +122,7 @@ document.addEventListener("DOMContentLoaded", () => {
             renderTable(exportedData);
         } catch (e) {
             if (e.message !== "Unauthorized") {
+                // Здесь сработает наша ошибка "Нельзя указать время без даты"
                 container.innerHTML = `<p style='padding:20px; color:red'>Ошибка: ${e.message}</p>`;
             }
         }
@@ -116,7 +143,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     async function requestDG() {
         try {
-            // Формируем структуру, которую ожидает DgSourceManager.run_manual
             const payload = {
                 name: document.getElementById("dgName").value.trim(),
                 data: {
@@ -128,7 +154,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
             console.log("Sending manual request to DG:", payload);
 
-            // Отправляем POST запрос на эндпоинт API Gateway
             const response = await Auth.authFetch(`${Auth.API_BASE}/dg/request`, {
                 method: "POST",
                 headers: {
@@ -152,29 +177,78 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     async function uploadFile() {
-        if (!fileInput.files[0]) return alert("Выберите файл");
         const file = fileInput.files[0];
+        if (!file) return alert("Выберите файл");
+
+        const fileName = file.name.toLowerCase();
         const reader = new FileReader();
+
         reader.onload = async (e) => {
             try {
-                const workbook = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
-                const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
+                let jsonData = [];
+                const now = new Date().toISOString().replace('T', ' ').split('.')[0];
+
+                if (fileName.endsWith('.xlsx')) {
+                    const workbook = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+                    const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+
+                    const rawData = XLSX.utils.sheet_to_json(worksheet);
+
+                    jsonData = rawData.map(row => {
+                        const lowerRow = Object.keys(row).reduce((acc, key) => {
+                            acc[key.toLowerCase()] = row[key];
+                            return acc;
+                        }, {});
+
+                        return {
+                            blocked_at: lowerRow.blocked_at || now,
+                            id: lowerRow.id || null,
+                            ip_address: String(lowerRow.ip_address || "").trim(),
+                            source: lowerRow.source || "manual_excel",
+                            profile: lowerRow.profile || ""
+                        };
+                    });
+
+                } else if (fileName.endsWith('.txt')) {
+                    const text = new TextDecoder().decode(e.target.result);
+                    jsonData = text.split('\n')
+                        .map(line => line.trim())
+                        .filter(line => line.length > 6)
+                        .map(ip => ({
+                            blocked_at: now,
+                            id: null,
+                            ip_address: ip,
+                            source: "manual_txt",
+                            profile: ""
+                        }));
+                }
+
+                const finalData = jsonData.filter(item => item.ip_address.length > 0);
+
+                if (finalData.length === 0) {
+                    return alert("В файле не найдено корректных данных");
+                }
+
                 const response = await Auth.authFetch(`${Auth.API_BASE}/data/receive`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(jsonData)
+                    body: JSON.stringify(finalData)
                 });
+
                 if (response.ok) {
-                    alert("Данные загружены!");
+                    alert(`Успешно загружено записей: ${finalData.length}`);
                     uploadDialog.close();
                     fileInput.value = "";
                 } else {
-                    alert("Ошибка при загрузке данных на сервер");
+                    alert("Ошибка при отправке данных на сервер");
                 }
+
             } catch (err) {
-                if (err.message !== "Unauthorized") alert("Ошибка обработки Excel-файла");
+                console.error("Ошибка парсинга:", err);
+                if (err.message !== "Unauthorized") alert("Ошибка обработки файла");
             }
         };
+
         reader.readAsArrayBuffer(file);
     }
 
