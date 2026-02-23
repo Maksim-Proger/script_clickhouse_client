@@ -94,18 +94,19 @@ document.addEventListener("DOMContentLoaded", () => {
             const rangeEnd = buildDateTime("filterDateTo", "filterTimeTo", "23:59:59");
 
             const filters = {
-                // Точное совпадение (если заполнено)
-                blocked_at: exactMatch,
+                // 1. Используем blocked_at (как ожидает бэкенд) вместо date
+                blocked_at: exactMatch || null,
 
-                // Период (объект с границами)
+                // 2. Передаем объект period, если выбрана хотя бы одна дата
                 period: (rangeStart || rangeEnd) ? {
-                    from: rangeStart,
-                    to: rangeEnd
+                    from: rangeStart || null,
+                    to: rangeEnd || null
                 } : null,
 
-                ip: document.getElementById("filterIP").value.trim(),
-                source: document.getElementById("filterSource").value,
-                profile: document.getElementById("filterProfile").value.trim()
+                // 3. Заменяем пустые строки на null, чтобы не засорять SQL-запрос
+                ip: document.getElementById("filterIP").value.trim() || null,
+                source: document.getElementById("filterSource").value || null,
+                profile: document.getElementById("filterProfile").value.trim() || null
             };
 
             const response = await Auth.authFetch(`${Auth.API_BASE}/ch/read`, {
