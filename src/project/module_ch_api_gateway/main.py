@@ -12,7 +12,7 @@ from project.module_ch_api_gateway.handler import handle_dg_request, handle_ch_r
 from project.module_ch_api_gateway.nats_client import NatsClient
 from project.utils.logging_formatter import setup_logging
 from project.module_ch_api_gateway.ch_handler import CHReadFilters
-from per_acc import CHSimpleFilters, handle_ch_simple_request
+from project.module_ch_api_gateway.per_acc import CHSimpleFilters, handle_ch_simple_request
 
 logger = logging.getLogger("ch-client")
 
