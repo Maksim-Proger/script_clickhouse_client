@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 
+from typing import Optional
 from fastapi import FastAPI, Request, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -60,7 +61,13 @@ def main(config: dict) -> None:
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     @app.post("/ch/read")
-    async def ch_read(filters: CHReadFilters, user: dict = Depends(get_current_user)):
+    async def ch_read(
+            filters: Optional[CHReadFilters] = None,
+            user: dict = Depends(get_current_user)
+    ):
+        if filters is None:
+            filters = CHReadFilters()
+
         result = await handle_ch_request(filters, config["clickhouse"])
         return JSONResponse(result)
 
