@@ -12,6 +12,7 @@ from project.module_ch_api_gateway.handler import handle_dg_request, handle_ch_r
 from project.module_ch_api_gateway.nats_client import NatsClient
 from project.utils.logging_formatter import setup_logging
 from project.module_ch_api_gateway.ch_handler import CHReadFilters
+from per_acc import CHSimpleFilters, handle_ch_simple_request
 
 logger = logging.getLogger("ch-client")
 
@@ -74,6 +75,15 @@ def main(config: dict) -> None:
         data = await request.json()
         await handle_web_data(nats_client, data)
         return JSONResponse({"status": "success"})
+
+    @app.post("/ch/read/simple")
+    async def ch_read_simple(filters: CHSimpleFilters, user: dict = Depends(get_current_user)):
+        """
+        Новый эндпоинт для работы с другим фронтендом.
+        Использует статический токен (через Depends) и делает дедупликацию IP.
+        """
+        result = await handle_ch_simple_request(filters, config["clickhouse"])
+        return JSONResponse(result)
 
     uvicorn.run(
         app,

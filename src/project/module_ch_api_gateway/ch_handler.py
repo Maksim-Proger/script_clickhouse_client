@@ -18,7 +18,6 @@ class CHReadFilters(BaseModel):
     source: Optional[str] = None
     profile: Optional[str] = None
 
-
 def build_blocked_ips_query(filters: CHReadFilters) -> str:
     conditions = []
 
