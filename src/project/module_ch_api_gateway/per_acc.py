@@ -10,33 +10,31 @@ class CHSimpleFilters(BaseModel):
 
 
 def build_deduplicated_ips_query(filters: CHSimpleFilters) -> str:
-    conditions = []
+    # Собираем список условий сразу (List Literal), фильтруя те, что None
+    raw_conditions = [
+        f"profile = '{filters.profile}'",
+        f"blocked_at >= '{filters.period.get('from')}'" if filters.period and filters.period.get('from') else None,
+        f"blocked_at <= '{filters.period.get('to')}'" if filters.period and filters.period.get('to') else None,
+    ]
 
-    # Фильтрация по профилю (из тела POST-запроса)
-    conditions.append(f"profile = '{filters.profile}'")
-
-    # Обработка периода (из словаря period: {"from": "...", "to": "..."})
-    if filters.period:
-        p_from = filters.period.get("from")
-        p_to = filters.period.get("to")
-        if p_from:
-            conditions.append(f"blocked_at >= '{p_from}'")
-        if p_to:
-            conditions.append(f"blocked_at <= '{p_to}'")
+    # Очищаем список от None значений
+    conditions = [c for c in raw_conditions if c is not None]
 
     where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
-    # SQL запрос с дедупликацией:
-    # Схлопываем миллионы строк по ip_address и находим время ПЕРВОЙ блокировки
+    # SQL запрос с корректным GROUP BY (устраняем ошибку 500)
     return f"""
     SELECT 
         ip_address,
         min(blocked_at) as first_detected,
-        argMin(source, blocked_at) as source,
-        argMin(profile, blocked_at) as profile
+        source,
+        profile
     FROM feedgen.blocked_ips 
     {where_clause} 
-    GROUP BY ip_address 
+    GROUP BY 
+        ip_address, 
+        source, 
+        profile
     ORDER BY first_detected DESC 
     LIMIT 500
     """
