@@ -90,41 +90,34 @@
     <div class="dialog-content">
         <h3>Фильтры данных CH</h3>
 
-        <fieldset style="border: 1px solid #ddd; padding: 10px; margin-bottom: 15px; border-radius: 8px;">
-            <legend style="padding: 0 5px; font-size: 0.9em; color: #666;">Точное совпадение (Дата и Время)</legend>
-            <label class="login-field">
-                <span>Дата</span>
-                <input type="date" id="filterDate">
-            </label>
-            <label class="login-field">
-                <span>Время</span>
-                <input type="time" id="filterTime" step="1">
-            </label>
-        </fieldset>
+        <label class="login-field">
+            <span>Дата</span>
+            <input type="date" id="filterDate">
+        </label>
+        <label class="login-field">
+            <span>Время</span>
+            <input type="time" id="filterTime" step="1">
+        </label>
 
-        <fieldset style="border: 1px solid #ddd; padding: 10px; margin-bottom: 15px; border-radius: 8px;">
-            <legend style="padding: 0 5px; font-size: 0.9em; color: #666;">Поиск за период (ОТ и ДО)</legend>
+        <hr class="menu-divider">
+
+        <label class="login-field">
+            <span>С (Дата и Время)</span>
             <div style="display: flex; gap: 10px;">
-                <label class="login-field" style="flex: 1;">
-                    <span>С (Дата)</span>
-                    <input type="date" id="filterDateFrom">
-                </label>
-                <label class="login-field" style="flex: 1;">
-                    <span>Время</span>
-                    <input type="time" id="filterTimeFrom" step="1">
-                </label>
+                <input type="date" id="filterDateFrom" style="flex: 1;">
+                <input type="time" id="filterTimeFrom" step="1" style="flex: 1;">
             </div>
-            <div style="display: flex; gap: 10px; margin-top: 10px;">
-                <label class="login-field" style="flex: 1;">
-                    <span>По (Дата)</span>
-                    <input type="date" id="filterDateTo">
-                </label>
-                <label class="login-field" style="flex: 1;">
-                    <span>Время</span>
-                    <input type="time" id="filterTimeTo" step="1">
-                </label>
+        </label>
+
+        <label class="login-field">
+            <span>По (Дата и Время)</span>
+            <div style="display: flex; gap: 10px;">
+                <input type="date" id="filterDateTo" style="flex: 1;">
+                <input type="time" id="filterTimeTo" step="1" style="flex: 1;">
             </div>
-        </fieldset>
+        </label>
+
+        <hr class="menu-divider">
 
         <label class="login-field">
             <span>IP адрес</span>

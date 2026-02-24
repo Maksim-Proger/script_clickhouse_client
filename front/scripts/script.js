@@ -71,7 +71,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     window.addEventListener("click", () => profileMenu.classList.add("is-hidden"));
 
-
     function buildDateTime(dateId, timeId, defaultTime = "00:00:00") {
         const d = document.getElementById(dateId).value;
         const t = document.getElementById(timeId).value;
@@ -81,29 +80,24 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         if (!d) return null;
 
-        // Если дата есть, а время нет — ставим дефолт (например, начало суток)
         return `${d} ${t || defaultTime}`;
     }
     async function requestCH() {
         try {
             container.innerHTML = "<p style='padding:20px'>Загрузка...</p>";
 
-            // Собираем значения с проверкой логики
             const exactMatch = buildDateTime("filterDate", "filterTime");
             const rangeStart = buildDateTime("filterDateFrom", "filterTimeFrom", "00:00:00");
             const rangeEnd = buildDateTime("filterDateTo", "filterTimeTo", "23:59:59");
 
             const filters = {
-                // 1. Используем blocked_at (как ожидает бэкенд) вместо date
                 blocked_at: exactMatch || null,
 
-                // 2. Передаем объект period, если выбрана хотя бы одна дата
                 period: (rangeStart || rangeEnd) ? {
                     from: rangeStart || null,
                     to: rangeEnd || null
                 } : null,
 
-                // 3. Заменяем пустые строки на null, чтобы не засорять SQL-запрос
                 ip: document.getElementById("filterIP").value.trim() || null,
                 source: document.getElementById("filterSource").value || null,
                 profile: document.getElementById("filterProfile").value.trim() || null
@@ -123,7 +117,6 @@ document.addEventListener("DOMContentLoaded", () => {
             renderTable(exportedData);
         } catch (e) {
             if (e.message !== "Unauthorized") {
-                // Здесь сработает наша ошибка "Нельзя указать время без даты"
                 container.innerHTML = `<p style='padding:20px; color:red'>Ошибка: ${e.message}</p>`;
             }
         }

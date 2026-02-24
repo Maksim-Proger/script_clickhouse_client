@@ -22,11 +22,9 @@ class CHReadFilters(BaseModel):
 def build_blocked_ips_query(filters: CHReadFilters) -> str:
     conditions = []
 
-    # 1. Фильтр по точной дате/времени (если пришло в blocked_at)
     if filters.blocked_at:
         conditions.append(f"blocked_at = '{filters.blocked_at}'")
 
-    # 2. Фильтр по периоду (из вашего JS объекта period)
     if filters.period:
         p_from = filters.period.get("from")
         p_to = filters.period.get("to")
@@ -35,7 +33,6 @@ def build_blocked_ips_query(filters: CHReadFilters) -> str:
         if p_to:
             conditions.append(f"blocked_at <= '{p_to}'")
 
-    # 3. Остальные фильтры
     if filters.ip:
         conditions.append(f"ip_address = '{filters.ip}'")
     if filters.source:
