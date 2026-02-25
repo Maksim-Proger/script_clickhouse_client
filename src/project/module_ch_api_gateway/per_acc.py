@@ -3,26 +3,19 @@ from pydantic import BaseModel
 from project.module_ch_api_gateway.ch_handler import read_from_clickhouse
 
 
-# Модель данных: только те параметры, которые придут с нового фронтенда
 class CHSimpleFilters(BaseModel):
     profile: str
-    period: Optional[Dict[str, str]] = None
-
+    period: Dict[str, str]
 
 def build_deduplicated_ips_query(filters: CHSimpleFilters) -> str:
-    # Собираем список условий сразу (List Literal), фильтруя те, что None
-    raw_conditions = [
+    conditions = [
         f"profile = '{filters.profile}'",
-        f"blocked_at >= '{filters.period.get('from')}'" if filters.period and filters.period.get('from') else None,
-        f"blocked_at <= '{filters.period.get('to')}'" if filters.period and filters.period.get('to') else None,
+        f"blocked_at >= '{filters.period['from']}'",
+        f"blocked_at <= '{filters.period['to']}'"
     ]
 
-    # Очищаем список от None значений
-    conditions = [c for c in raw_conditions if c is not None]
+    where_clause = f"WHERE {' AND '.join(conditions)}"
 
-    where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-
-    # SQL запрос с корректным GROUP BY (устраняем ошибку 500)
     return f"""
     SELECT 
         ip_address,
@@ -39,11 +32,7 @@ def build_deduplicated_ips_query(filters: CHSimpleFilters) -> str:
     LIMIT 500
     """
 
-
 async def handle_ch_simple_request(filters: CHSimpleFilters, ch_cfg: dict) -> dict:
-    """
-    Выполняет запрос к ClickHouse, используя общую функцию транспорта из ch_handler.py
-    """
     query = build_deduplicated_ips_query(filters)
     return await read_from_clickhouse(
         query=query,

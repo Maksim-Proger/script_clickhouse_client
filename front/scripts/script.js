@@ -11,14 +11,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const currentUserSpan = document.getElementById("currentUser");
     const dgFilterDialog = document.getElementById("dgFilterDialog");
     const btnApplyDGFilters = document.getElementById("btnApplyDGFilters");
-
     const uploadDialog = document.getElementById("uploadDialog");
     const exportDialog = document.getElementById("exportDialog");
-    const filterDialog = document.getElementById("filterDialog");
-
+    const rchFilterDialog = document.getElementById("rchFilterDialog");
     const container = document.getElementById("data-list");
     const fileInput = document.getElementById("fileInput");
-
     const btnUploadFile = document.getElementById("btnUploadFile");
     const btnConfirmExport = document.querySelector("#exportDialog .primary-button");
     const btnApplyFilters = document.getElementById("btnApplyFilters");
@@ -71,16 +68,19 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     window.addEventListener("click", () => profileMenu.classList.add("is-hidden"));
 
-    function buildDateTime(dateId, timeId, defaultTime = "00:00:00") {
-        const d = document.getElementById(dateId).value;
-        const t = document.getElementById(timeId).value;
+    function buildDateTime(dateId, timeId, defaultTime = null) {
+        const date = document.getElementById(dateId).value;
+        let time = document.getElementById(timeId).value;
 
-        if (!d && t) {
-            throw new Error("Нельзя указать время без даты");
+        if (!date) return null;
+
+        if (!time && defaultTime) {
+            time = defaultTime;
+        } else if (!time) {
+            return date;
         }
-        if (!d) return null;
 
-        return `${d} ${t || defaultTime}`;
+        return `${date} ${time}`;
     }
     async function requestCH() {
         try {
@@ -255,10 +255,10 @@ document.addEventListener("DOMContentLoaded", () => {
         exportDialog.close();
     }
 
-    document.getElementById("btnCH").addEventListener("click", () => filterDialog.showModal());
+    document.getElementById("btnCH").addEventListener("click", () => rchFilterDialog.showModal());
 
     btnApplyFilters.addEventListener("click", () => {
-        filterDialog.close();
+        rchFilterDialog.close();
         requestCH();
     });
 

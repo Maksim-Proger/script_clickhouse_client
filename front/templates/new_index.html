@@ -86,7 +86,7 @@
     </div>
 </dialog>
 
-<dialog id="filterDialog" class="modern-dialog">
+<dialog id="rchFilterDialog" class="modern-dialog">
     <div class="dialog-content">
         <h3>Фильтры данных CH</h3>
 
@@ -96,51 +96,34 @@
         </label>
         <label class="login-field">
             <span>Время</span>
-            <input type="time" id="filterTime" step="1">
+            <div style="display: flex; gap: 5px;">
+                <input type="time" id="filterTime" step="1" style="flex: 1;">
+                <button type="button" class="secondary-button" onclick="document.getElementById('filterTime').value=''" title="Очистить время">×</button>
+            </div>
         </label>
 
         <hr class="menu-divider">
 
         <label class="login-field">
             <span>С (Дата и Время)</span>
-            <div style="display: flex; gap: 10px;">
-                <input type="date" id="filterDateFrom" style="flex: 1;">
-                <input type="time" id="filterTimeFrom" step="1" style="flex: 1;">
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <input type="date" id="filterDateFrom" style="flex: 2;">
+                <input type="time" id="filterTimeFrom" step="1" style="flex: 2;">
+                <button type="button" class="secondary-button" onclick="document.getElementById('filterTimeFrom').value=''" title="Очистить время">×</button>
             </div>
         </label>
 
         <label class="login-field">
             <span>По (Дата и Время)</span>
-            <div style="display: flex; gap: 10px;">
-                <input type="date" id="filterDateTo" style="flex: 1;">
-                <input type="time" id="filterTimeTo" step="1" style="flex: 1;">
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <input type="date" id="filterDateTo" style="flex: 2;">
+                <input type="time" id="filterTimeTo" step="1" style="flex: 2;">
+                <button type="button" class="secondary-button" onclick="document.getElementById('filterTimeTo').value=''" title="Очистить время">×</button>
             </div>
         </label>
 
-        <hr class="menu-divider">
-
-        <label class="login-field">
-            <span>IP адрес</span>
-            <input type="text" id="filterIP" placeholder="192.168.1.1">
-        </label>
-
-        <label class="login-field">
-            <span>Источник (source)</span>
-            <select id="filterSource">
-                <option value="">Все источники</option>
-                <option value="dosgate">dosgate</option>
-                <option value="ipban">ipban</option>
-                <option value="web_interface">web_interface</option>
-            </select>
-        </label>
-
-        <label class="login-field">
-            <span>Профиль</span>
-            <input type="text" id="filterProfile" placeholder="default">
-        </label>
-
         <div class="dialog-actions" style="margin-top: 15px;">
-            <button class="secondary-button" onclick="this.closest('dialog').close()">Отмена</button>
+            <button class="secondary-button" onclick="document.getElementById('rchFilterDialog').close()">Отмена</button>
             <button class="primary-button" id="btnApplyFilters">Применить</button>
         </div>
     </div>

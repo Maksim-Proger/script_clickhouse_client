@@ -85,10 +85,6 @@ def main(config: dict) -> None:
 
     @app.post("/ch/read/simple")
     async def ch_read_simple(filters: CHSimpleFilters, user: dict = Depends(get_current_user)):
-        """
-        Новый эндпоинт для работы с другим фронтендом.
-        Использует статический токен (через Depends) и делает дедупликацию IP.
-        """
         result = await handle_ch_simple_request(filters, config["clickhouse"])
         return JSONResponse(result)
 
