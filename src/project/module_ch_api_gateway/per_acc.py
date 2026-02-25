@@ -1,4 +1,4 @@
-from typing import Optional, Dict
+from typing import Dict
 from pydantic import BaseModel
 from project.module_ch_api_gateway.ch_handler import read_from_clickhouse
 
