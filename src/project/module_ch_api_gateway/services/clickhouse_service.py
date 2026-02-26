@@ -5,9 +5,10 @@ class ClickHouseService:
     def __init__(self, client):
         self.client = client
 
-    def _build_blocked_ips_query(self, filters: CHReadFilters) -> str:
+    @staticmethod
+    def _build_blocked_ips_query(filters: CHReadFilters) -> str:
         conditions = []
-        if filters.blocked_at: conditions.append(f"blocked_at = '{filters.blocked_at}'")
+        if filters.blocked_at: conditions.append(f"toDate(blocked_at) = '{filters.blocked_at}'")
         if filters.period:
             p_from, p_to = filters.period.get("from"), filters.period.get("to")
             if p_from: conditions.append(f"blocked_at >= '{p_from}'")
@@ -19,7 +20,8 @@ class ClickHouseService:
         where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
         return f"SELECT * FROM feedgen.blocked_ips {where_clause} ORDER BY blocked_at DESC LIMIT 500"
 
-    def _build_deduplicated_query(self, filters: CHSimpleFilters) -> str:
+    @staticmethod
+    def _build_deduplicated_query(filters: CHSimpleFilters) -> str:
         conditions = [
             f"profile = '{filters.profile}'",
             f"blocked_at >= '{filters.period['from']}'",
@@ -29,9 +31,9 @@ class ClickHouseService:
         return f"SELECT ip_address, min(blocked_at) as first_detected, source, profile FROM feedgen.blocked_ips {where_clause} GROUP BY ip_address, source, profile ORDER BY first_detected DESC LIMIT 500"
 
     async def get_blocked_ips(self, filters: CHReadFilters):
-        query = self._build_blocked_ips_query(filters)
+        query = ClickHouseService._build_blocked_ips_query(filters)
         return await self.client.fetch_json(query)
 
     async def get_simple_ips(self, filters: CHSimpleFilters):
-        query = self._build_deduplicated_query(filters)
+        query = ClickHouseService._build_deduplicated_query(filters)
         return await self.client.fetch_json(query)
