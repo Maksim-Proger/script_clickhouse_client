@@ -4,10 +4,13 @@ from typing import Optional
 import logging
 from nats.aio.client import Client as NatsClientLib
 
-from project.module_ch_loader.batch_buffer import BatchBuffer
-from project.module_ch_loader.ch_writer import ClickHouseWriter
-from project.module_ch_loader.nats_handler import NatsMessageHandler
-logger = logging.getLogger("ch-writer")
+from project.module_ch_loader.core.batch_buffer import BatchBuffer
+from project.module_ch_loader.core.nats_handler import NatsMessageHandler
+from project.module_ch_loader.infrastructure.ch_writer import ClickHouseWriter
+
+logger = logging.getLogger("ch-loader")
+
+
 class NatsWriterConsumer:
     def __init__(self, config: dict):
         self.nats_cfg = config["nats"]
@@ -71,7 +74,7 @@ class NatsWriterConsumer:
         await self.js.subscribe(
             subject=self.nats_cfg["subject"],
             durable=self.nats_cfg["durable"],
-            cb=lambda msg: self.handler.handle(msg)
+            cb=self.handler.handle
         )
 
         async def periodic_flush():

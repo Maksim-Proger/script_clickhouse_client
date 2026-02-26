@@ -1,5 +1,7 @@
 import asyncio
 from typing import List, Tuple
+
+
 class BatchBuffer:
     def __init__(self, batch_size: int, max_buffer_size: int):
         self.batch_size = batch_size

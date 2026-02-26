@@ -1,21 +1,27 @@
+import asyncio
 import json
 import logging
 from datetime import datetime
+
 from nats.aio.msg import Msg
 
-from project.module_ch_loader.batch_buffer import BatchBuffer
-from project.module_ch_loader.ch_writer import ClickHouseWriter
-logger = logging.getLogger("ch-writer")
+from project.module_ch_loader.core.batch_buffer import BatchBuffer
+from project.module_ch_loader.infrastructure.ch_writer import ClickHouseWriter
+
+logger = logging.getLogger("ch-loader")
+
+
 class NatsMessageHandler:
     def __init__(
-        self,
-        buffer: BatchBuffer,
-        writer: ClickHouseWriter,
-        is_shutting_down_fn,
+            self,
+            buffer: BatchBuffer,
+            writer: ClickHouseWriter,
+            is_shutting_down_fn,
     ):
         self.buffer = buffer
         self.writer = writer
         self.is_shutting_down = is_shutting_down_fn
+        self._flush_lock = asyncio.Lock()
 
     async def handle(self, msg: Msg) -> None:
         if self.is_shutting_down():
@@ -59,14 +65,15 @@ class NatsMessageHandler:
             await msg.nak()
 
     async def flush(self) -> None:
-        batch = await self.buffer.snapshot()
-        if not batch:
-            return
+        async with self._flush_lock:
+            batch = await self.buffer.snapshot()
+            if not batch:
+                return
 
-        try:
-            await self.writer.write(batch)
-        except Exception as e:
-            logger.error("action=flush_failed error=%s", str(e))
-            raise
-        else:
-            await self.buffer.drop_written(len(batch))
+            try:
+                await self.writer.write(batch)
+            except Exception as e:
+                logger.error("action=flush_failed error=%s", str(e))
+                raise
+            else:
+                await self.buffer.drop_written(len(batch))
