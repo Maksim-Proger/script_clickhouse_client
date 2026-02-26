@@ -1,8 +1,10 @@
-import httpx
-import time
 import logging
+import time
+
+import httpx
 
 logger = logging.getLogger("ch-client")
+
 
 class ClickHouseClient:
     def __init__(self, host: str, port: int, timeout_sec: int):

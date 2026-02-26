@@ -1,11 +1,12 @@
-from fastapi import FastAPI
-from contextlib import asynccontextmanager
-from fastapi.middleware.cors import CORSMiddleware
 import logging
+from contextlib import asynccontextmanager
 
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from project.module_ch_api_gateway.api.routers import clickhouse_router, auth_router, data_router
 from project.module_ch_api_gateway.infrastructure.clickhouse_client import ClickHouseClient
 from project.module_ch_api_gateway.infrastructure.nats_client import NatsInfrastructure
-from project.module_ch_api_gateway.api.routers import clickhouse_router, auth_router, data_router
 
 logger = logging.getLogger("ch-api-gateway")
 

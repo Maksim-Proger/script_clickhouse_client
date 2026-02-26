@@ -1,7 +1,8 @@
 import asyncio
+import logging
 import signal
 from typing import Optional
-import logging
+
 from nats.aio.client import Client as NatsClientLib
 
 from project.module_ch_loader.core.batch_buffer import BatchBuffer

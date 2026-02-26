@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from typing import List, Tuple
+
 from clickhouse_driver import Client as CHClient
 
 logger = logging.getLogger("ch-writer")

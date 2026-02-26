@@ -1,22 +1,24 @@
+import logging
+
 from fastapi import Request, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError, ExpiredSignatureError
-import logging
 
 from project.module_ch_api_gateway.services.clickhouse_service import ClickHouseService
 from project.module_ch_api_gateway.services.nats_service import NatsService
-
 
 logger = logging.getLogger("ch-api-gateway")
 
 security = HTTPBearer()
 
+
 def get_config(request: Request):
     return request.app.state.config
 
+
 async def get_current_user(
-    auth_creds: HTTPAuthorizationCredentials = Depends(security),
-    config = Depends(get_config)
+        auth_creds: HTTPAuthorizationCredentials = Depends(security),
+        config=Depends(get_config)
 ):
     token = auth_creds.credentials
     secret_key = config["auth"]["secret_key"]
@@ -41,8 +43,10 @@ async def get_current_user(
             detail="Невалидный токен"
         )
 
+
 def get_ch_service(request: Request) -> ClickHouseService:
     return ClickHouseService(request.app.state.ch_client)
 
-def get_nats_service(request: Request, config = Depends(get_config)) -> NatsService:
+
+def get_nats_service(request: Request, config=Depends(get_config)) -> NatsService:
     return NatsService(request.app.state.nats_infra, config["nats"]["dg_subject"])

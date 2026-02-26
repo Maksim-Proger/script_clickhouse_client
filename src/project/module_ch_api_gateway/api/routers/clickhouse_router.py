@@ -8,7 +8,7 @@ router = APIRouter(prefix="/ch", tags=["ClickHouse"])
 
 @router.post("/read")
 async def read_ch(filters: CHReadFilters = None, service=Depends(get_ch_service), user=Depends(get_current_user)):
-    return await service.get_blocked_ips(filters or CHReadFilters())  # [cite: 19]
+    return await service.get_blocked_ips(filters or CHReadFilters())
 
 
 @router.post("/read/simple")

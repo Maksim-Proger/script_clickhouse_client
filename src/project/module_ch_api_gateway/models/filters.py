@@ -1,9 +1,12 @@
-from pydantic import BaseModel, Field
 from typing import Optional, Dict
+
+from pydantic import BaseModel, Field
+
 
 class PeriodFilter(BaseModel):
     from_date: Optional[str] = Field(None, alias="from")
     to_date: Optional[str] = Field(None, alias="to")
+
 
 class CHReadFilters(BaseModel):
     blocked_at: Optional[str] = None
@@ -11,6 +14,7 @@ class CHReadFilters(BaseModel):
     ip: Optional[str] = None
     source: Optional[str] = None
     profile: Optional[str] = None
+
 
 class CHSimpleFilters(BaseModel):
     profile: str

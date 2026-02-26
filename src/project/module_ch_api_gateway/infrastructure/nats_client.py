@@ -1,6 +1,8 @@
 import json
-from nats.aio.client import Client as NatsClientLib
 from typing import Optional
+
+from nats.aio.client import Client as NatsClientLib
+
 
 class NatsInfrastructure:
     def __init__(self, url: str):

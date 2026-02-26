@@ -1,5 +1,7 @@
-import uvicorn
 import logging
+
+import uvicorn
+
 from project.utils.logging_formatter import setup_logging
 from .app import create_app
 
