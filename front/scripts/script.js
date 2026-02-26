@@ -17,8 +17,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const container = document.getElementById("data-list");
     const fileInput = document.getElementById("fileInput");
     const btnUploadFile = document.getElementById("btnUploadFile");
-    const btnConfirmExport = document.querySelector("#exportDialog .primary-button");
+    const btnConfirmExport = document.getElementById("btnConfirmExport");
     const btnApplyFilters = document.getElementById("btnApplyFilters");
+
+    const IP_REGEX = /\b(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)){3}\b/;
 
     let exportedData = [];
 
@@ -134,13 +136,9 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
             };
 
-            console.log("Sending manual request to DG:", payload);
-
             const response = await Auth.authFetch(`${Auth.API_BASE}/dg/request`, {
                 method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload)
             });
 
@@ -173,7 +171,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (fileName.endsWith('.xlsx')) {
                     const workbook = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
                     const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-
                     const rawData = XLSX.utils.sheet_to_json(worksheet);
 
                     jsonData = rawData.map(row => {
@@ -195,7 +192,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     const text = new TextDecoder().decode(e.target.result);
                     jsonData = text.split('\n')
                         .map(line => line.trim())
-                        .filter(line => line.length > 6)
+                        .filter(line => IP_REGEX.test(line))
                         .map(ip => ({
                             blocked_at: now,
                             id: null,

@@ -48,7 +48,8 @@ body {
 .login-field { display: flex; flex-direction: column; gap: 5px; font-size: 14px; margin-bottom: 10px;}
 .login-field:last-of-type { margin-bottom: 0; }
 .login-field input { padding: 10px; border: 1px solid #cfd6e0; border-radius: 8px; outline: none; }
-.login-button { padding: 12px; background: #4a6cf7; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; }
+.login-button { padding: 12px; background: #4a6cf7; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; transition: background 0.2s; }
+.login-button:hover { background: #3a5ce6; }
 
 .sidebar {
     width: 260px;
@@ -60,10 +61,16 @@ body {
     flex-direction: column;
 }
 
+.profile-container {
+    position: relative;
+}
+
 .profile-button {
     width: 45px; height: 45px; border-radius: 50%; background: #2d3748;
     color: white; border: none; cursor: pointer; margin-bottom: 25px;
+    transition: background 0.2s;
 }
+.profile-button:hover { background: #4a5568; }
 
 .sidebar button.action {
     padding: 12px; margin-bottom: 10px; background: #f8fafc;
@@ -120,14 +127,28 @@ td { padding: 12px; border-bottom: 1px solid #f1f5f9; font-size: 14px; }
 .file-upload-wrapper input { width: 100%; }
 
 .dialog-actions { display: flex; justify-content: flex-end; gap: 10px; }
-.primary-button { padding: 10px 20px; background: #4a6cf7; color: white; border: none; border-radius: 8px; cursor: pointer; }
-.secondary-button { padding: 10px 20px; background: #f1f5f9; color: #475569; border: none; border-radius: 8px; cursor: pointer; }
+
+.primary-button { padding: 10px 20px; background: #4a6cf7; color: white; border: none; border-radius: 8px; cursor: pointer; transition: background 0.2s; }
+.primary-button:hover { background: #3a5ce6; }
+.secondary-button { padding: 10px 20px; background: #f1f5f9; color: #475569; border: none; border-radius: 8px; cursor: pointer; transition: background 0.2s; }
+.secondary-button:hover { background: #e2e8f0; }
 
 .profile-menu {
-    position: absolute; top: 70px; left: 20px; width: 180px;
+    position: absolute; top: 55px; left: 0; width: 180px;
     background: #fff; border-radius: 8px; box-shadow: 0 10px 15px rgba(0,0,0,0.1);
     padding: 15px; z-index: 100; border: 1px solid #e2e8f0;
 }
+
+.profile-info { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+.profile-label { font-size: 12px; color: #94a3b8; }
+.profile-value { font-size: 14px; font-weight: 600; color: #2d3748; }
+
+.menu-divider { border: none; border-top: 1px solid #e2e8f0; margin: 8px 0; }
+
+.format-options { display: flex; flex-direction: column; gap: 8px; }
+.radio-option { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }
+.radio-option input[type="radio"] { cursor: pointer; }
+
 .logout-button {
     width: 100%;
     background: #fee2e2;
@@ -137,4 +158,6 @@ td { padding: 12px; border-bottom: 1px solid #f1f5f9; font-size: 14px; }
     border-radius: 6px;
     cursor: pointer;
     margin-top: 10px;
+    transition: background 0.2s;
 }
+.logout-button:hover { background: #fecaca; }
