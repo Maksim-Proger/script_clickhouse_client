@@ -1,4 +1,4 @@
-from models.filters import CHReadFilters, CHSimpleFilters
+from project.module_ch_api_gateway.models.filters import CHReadFilters, CHSimpleFilters
 
 
 class ClickHouseService:

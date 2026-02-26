@@ -1,9 +1,11 @@
 from fastapi import Request, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError, ExpiredSignatureError
-from .services.clickhouse_service import ClickHouseService
-from .services.nats_service import NatsService
 import logging
+
+from project.module_ch_api_gateway.services.clickhouse_service import ClickHouseService
+from project.module_ch_api_gateway.services.nats_service import NatsService
+
 
 logger = logging.getLogger("ch-api-gateway")
 

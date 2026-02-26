@@ -5,6 +5,7 @@ from .app import create_app
 
 logger = logging.getLogger("ch-api-gateway")
 
+
 def main(config: dict) -> None:
     setup_logging("ch-api-gateway")
 

@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
+
 from jose import jwt
-from fastapi import HTTPException, status
+
 
 def create_access_token(data: dict, secret_key: str, algorithm: str):
     to_encode = data.copy()

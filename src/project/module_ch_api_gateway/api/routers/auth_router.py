@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Body
-from api.dependencies import get_config
-from core.auth import create_access_token
+
+from project.module_ch_api_gateway.api.dependencies.dependencies import get_config
+from project.module_ch_api_gateway.core.auth import create_access_token
 
 router = APIRouter(tags=["Auth"])
 

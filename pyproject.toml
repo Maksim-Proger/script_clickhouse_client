@@ -9,9 +9,9 @@ dependencies = [
     "httpx[http2]",
     "clickhouse-driver",
     "PyYAML",
-    "pyjwt",
-    "cryptography",
-    "python-multipart"
+    "python-jose[cryptography]",
+    "python-multipart",
+    "pydantic"
 ]
 
 
