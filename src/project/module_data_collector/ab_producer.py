@@ -1,11 +1,13 @@
 import asyncio
 import json
 import logging
+
 from project.module_data_collector.http.src1_client import AbClient
 from project.module_data_collector.lifecycle import Lifecycle
 from project.module_data_collector.parser.parser import parse_input
 
-logger = logging.getLogger("nats-corn")
+logger = logging.getLogger("data-collector")
+
 
 class AbProducer:
     def __init__(self, nc, config: dict, lifecycle: Lifecycle):
@@ -37,7 +39,7 @@ class AbProducer:
                         if self.lifecycle.is_shutting_down:
                             break
                         # Отправляем данные из AB в NATS.
-                        await self.nc.publish("ch.write.raw",json.dumps(record).encode())
+                        await self.nc.publish("ch.write.raw", json.dumps(record).encode())
 
                 except Exception as req_err:
                     logger.error("action=ipban_fetch_failed error=%s", str(req_err))

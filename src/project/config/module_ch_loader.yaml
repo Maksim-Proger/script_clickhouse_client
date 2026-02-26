@@ -14,4 +14,3 @@ batch:
   size: 100
   interval_sec: 1.0
   max_buffer_size: 1000
-

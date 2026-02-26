@@ -5,7 +5,7 @@ import logging
 from project.module_data_collector.http.src2_client import DgClient
 from project.module_data_collector.parser.parser import parse_input
 
-logger = logging.getLogger("data_collector")
+logger = logging.getLogger("data-collector")
 
 
 class DgSourceManager:
@@ -15,7 +15,6 @@ class DgSourceManager:
         self.client = DgClient()
 
         self.defaults = config.get("dg_defaults", {})
-
         self.sources = {src["name"]: src for src in config.get("dg_sources", [])}
         self.dt_format = config.get("parser", {}).get("clickhouse_dt_format", "%Y-%m-%d %H:%M:%S")
 
@@ -99,3 +98,7 @@ class DgSourceManager:
             if interval > 0:
                 logger.info("action=worker_init profile=%s interval=%ds", name, interval)
                 asyncio.create_task(self._worker_loop(name, interval))
+
+    async def stop(self):
+        await self.client.close()
+        logger.info("action=dg_manager_stopped")

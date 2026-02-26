@@ -3,7 +3,7 @@ import signal
 import logging
 
 
-logger = logging.getLogger("nats-corn")
+logger = logging.getLogger("data-collector")
 
 class Lifecycle:
     def __init__(self):

@@ -1,17 +1,20 @@
 import json
 import logging
+
+from nats.aio.client import Client as NatsClient
+
 from project.module_data_collector.lifecycle import Lifecycle
-from nats.aio.client import Client as  NatsClient
 from project.module_data_collector.parser.parser import parse_input
 
-logger = logging.getLogger("nats-corn")
+logger = logging.getLogger("data-collector")
+
 
 class NatsWebConsumer:
     def __init__(
-        self,
-        nc: NatsClient,
-        config: dict,
-        lifecycle: Lifecycle,
+            self,
+            nc: NatsClient,
+            config: dict,
+            lifecycle: Lifecycle,
     ):
         self.nc = nc
         self.dt_format = config["parser"]["clickhouse_dt_format"]
@@ -24,12 +27,10 @@ class NatsWebConsumer:
             await msg.nak()
             return
         try:
-            payload = json.loads(msg.data.decode())
-
             logger.debug("action=web_data_received size=%d", len(msg.data))
 
             records = parse_input(
-                data=json.dumps(payload),
+                data=msg.data.decode(),
                 source="web_interface",
                 dt_format=self.dt_format
             )
