@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Request
 
-from project.module_ch_api_gateway.api.dependencies import get_nats_service, get_current_user
+from project.module_ch_api_gateway.api.dependencies.dependencies import get_nats_service, get_current_user
 
 router = APIRouter(tags=["Data"])
 
