@@ -2,9 +2,7 @@ import asyncio
 import logging
 from clickhouse_driver import Client as CHClient
 from typing import List, Tuple
-
 logger = logging.getLogger("ch-writer")
-
 class ClickHouseWriter:
     def __init__(self, cfg: dict):
         self.client = CHClient(

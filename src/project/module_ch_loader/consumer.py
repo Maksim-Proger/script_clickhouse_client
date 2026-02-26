@@ -7,10 +7,7 @@ from nats.aio.client import Client as NatsClientLib
 from project.module_ch_loader.batch_buffer import BatchBuffer
 from project.module_ch_loader.ch_writer import ClickHouseWriter
 from project.module_ch_loader.nats_handler import NatsMessageHandler
-
-
 logger = logging.getLogger("ch-writer")
-
 class NatsWriterConsumer:
     def __init__(self, config: dict):
         self.nats_cfg = config["nats"]

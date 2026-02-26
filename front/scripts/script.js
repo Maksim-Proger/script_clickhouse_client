@@ -68,36 +68,24 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     window.addEventListener("click", () => profileMenu.classList.add("is-hidden"));
 
-    function buildDateTime(dateId, timeId, defaultTime = null) {
-        const date = document.getElementById(dateId).value;
-        let time = document.getElementById(timeId).value;
-
-        if (!date) return null;
-
-        if (!time && defaultTime) {
-            time = defaultTime;
-        } else if (!time) {
-            return date;
-        }
-
-        return `${date} ${time}`;
-    }
     async function requestCH() {
         try {
             container.innerHTML = "<p style='padding:20px'>Загрузка...</p>";
 
-            const exactMatch = buildDateTime("filterDate", "filterTime");
-            const rangeStart = buildDateTime("filterDateFrom", "filterTimeFrom", "00:00:00");
-            const rangeEnd = buildDateTime("filterDateTo", "filterTimeTo", "23:59:59");
+            const exactDate = document.getElementById("filterDate").value || null;
+            const rangeStart = document.getElementById("filterDateFrom").value
+                ? document.getElementById("filterDateFrom").value + " " + (document.getElementById("filterTimeFrom").value || "00:00:00")
+                : null;
+            const rangeEnd = document.getElementById("filterDateTo").value
+                ? document.getElementById("filterDateTo").value + " " + (document.getElementById("filterTimeTo").value || "23:59:59")
+                : null;
 
             const filters = {
-                blocked_at: exactMatch || null,
-
+                blocked_at: exactDate,
                 period: (rangeStart || rangeEnd) ? {
                     from: rangeStart || null,
                     to: rangeEnd || null
                 } : null,
-
                 ip: document.getElementById("filterIP").value.trim() || null,
                 source: document.getElementById("filterSource").value || null,
                 profile: document.getElementById("filterProfile").value.trim() || null
