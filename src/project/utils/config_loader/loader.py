@@ -1,6 +1,8 @@
-import yaml
 from pathlib import Path
 from typing import Any, Dict
+
+import yaml
+
 
 def load_yaml(file_path: str) -> Dict[str, Any]:
     path = Path(file_path)

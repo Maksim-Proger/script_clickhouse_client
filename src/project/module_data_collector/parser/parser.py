@@ -8,6 +8,7 @@ IP_REGEX = re.compile(
     r'(?:\.(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)){3}\b'
 )
 
+
 def _extract_records(obj: Any,
                      result: List[dict],
                      source: str,

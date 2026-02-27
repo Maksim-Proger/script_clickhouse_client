@@ -1,5 +1,6 @@
-import httpx
 from typing import Optional
+
+import httpx
 
 
 class BaseAsyncHttpClient:
@@ -25,10 +26,10 @@ class BaseAsyncHttpClient:
         return resp.text
 
     async def post(
-        self,
-        url: str,
-        headers: dict | None = None,
-        data: dict | None = None,
+            self,
+            url: str,
+            headers: dict | None = None,
+            data: dict | None = None,
     ) -> str:
         if not self._client:
             raise RuntimeError("HTTP client is not connected")

@@ -1,9 +1,9 @@
 from multiprocessing import Process
-from project.module_data_collector.main import main as data_collector_main
+
 from project.module_ch_api_gateway.main import main as ch_api_gateway_main
 from project.module_ch_loader.main import main as ch_loader_main
+from project.module_data_collector.main import main as data_collector_main
 from project.utils.config_loader.loader import load_yaml
-
 
 CONFIG_DATA_COLLECTOR = load_yaml("src/project/config/module_data_collector.yaml")
 CONFIG_CH_API_GATEWAY = load_yaml("src/project/config/module_ch_api_gateway.yaml")
@@ -13,6 +13,7 @@ DG_CONFIG = load_yaml("src/project/config/dg_sources.yaml")
 
 CONFIG_DATA_COLLECTOR["dg_sources"] = DG_CONFIG.get("dg_sources", [])
 CONFIG_DATA_COLLECTOR["dg_defaults"] = DG_CONFIG.get("dg_defaults", {})
+
 
 def main() -> None:
     processes = [
