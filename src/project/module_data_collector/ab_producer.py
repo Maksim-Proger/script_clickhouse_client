@@ -14,10 +14,11 @@ class AbProducer:
         self.nc = nc
         self.interval = config["ab_client"]["interval"]
         self.url = config["ab_client"]["url"]
+        self.timeout = config["ab_client"].get("timeout", 10)
         self.dt_format = config["parser"]["clickhouse_dt_format"]
         self.lifecycle = lifecycle
 
-        self.client = AbClient(self.url)
+        self.client = AbClient(self.url, timeout=self.timeout)
 
     async def start(self) -> None:
         await self.client.connect()

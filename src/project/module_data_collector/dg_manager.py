@@ -12,7 +12,9 @@ class DgSourceManager:
     def __init__(self, nc, config: dict, lifecycle):
         self.nc = nc
         self.lifecycle = lifecycle
-        self.client = DgClient()
+
+        dg_timeout = config.get("dg_defaults", {}).get("timeout", 10)
+        self.client = DgClient(timeout=dg_timeout)
 
         self.defaults = config.get("dg_defaults", {})
         self.sources = {src["name"]: src for src in config.get("dg_sources", [])}
@@ -38,7 +40,7 @@ class DgSourceManager:
                 if self.lifecycle.is_shutting_down:
                     break
                 # Отправляем нормализованные данные в ClickHouse loader через NATS
-                await self.nc.publish("ch.write.raw", json.dumps(record).encode())
+                # await self.nc.publish("ch.write.raw", json.dumps(record).encode())
 
         except Exception as e:
             logger.error("action=request_failed profile=%s error=%s", name, str(e))

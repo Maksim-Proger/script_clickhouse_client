@@ -4,11 +4,11 @@ nats:
   durable: "ch_writer"
 
 clickhouse:
-  host: "localhost"
+  host: "10.81.0.136"
   port: 9000
   database: "feedgen"
-  user: "default"
-  password: ""
+  user: "feedgen"
+  password: "dien9ux9aithohbec0aephu5meYee4In"
 
 batch:
   size: 100

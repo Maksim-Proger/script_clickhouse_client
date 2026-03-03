@@ -5,6 +5,8 @@ class ClickHouseConfig(BaseModel):
     host: str
     http_port: int
     timeout_sec: int
+    user: str
+    password: str
 
 
 class AppConfig(BaseModel):

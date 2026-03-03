@@ -7,16 +7,22 @@ logger = logging.getLogger("ch-client")
 
 
 class ClickHouseClient:
-    def __init__(self, host: str, port: int, timeout_sec: int):
+    def __init__(self, host: str, port: int, timeout_sec: int, user: str, password: str):
         self.url = f"http://{host}:{port}/"
         self.timeout = timeout_sec
+        self.user = user
+        self.password = password
 
     async def fetch_json(self, query: str) -> dict:
         sql = f"{query} FORMAT JSON"
         start_time = time.perf_counter()
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
-                resp = await client.get(self.url, params={"query": sql})
+                resp = await client.get(
+                    self.url,
+                    params={"query": sql},
+                    auth=(self.user, self.password)
+                )
                 resp.raise_for_status()
 
                 duration = time.perf_counter() - start_time

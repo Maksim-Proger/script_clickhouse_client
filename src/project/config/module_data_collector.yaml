@@ -1,6 +1,7 @@
 ab_client:
-  url: "http://192.168.100.13/common_ipban"
+  url: "http://10.25.86.13/common_ipban"
   interval: 20.0
+  timeout: 10
 
 nats:
   url: "nats://localhost:4222"

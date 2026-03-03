@@ -29,7 +29,9 @@ def create_app(config: dict) -> FastAPI:
     app.state.ch_client = ClickHouseClient(
         host=config["clickhouse"]["host"],
         port=config["clickhouse"]["http_port"],
-        timeout_sec=config["clickhouse"]["timeout_sec"]
+        timeout_sec=config["clickhouse"]["timeout_sec"],
+        user=config["clickhouse"].get("user", "default"),
+        password=config["clickhouse"].get("password", ""),
     )
     app.state.nats_infra = NatsInfrastructure(url=config["nats"]["url"])
 
