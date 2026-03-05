@@ -1,6 +1,6 @@
 ab_client:
-  url: "http://10.25.86.13/common_ipban"
-  interval: 20.0
+  url: "http://10.25.78.131/common_ipban"
+  interval: 60.0
   timeout: 10
 
 nats:
