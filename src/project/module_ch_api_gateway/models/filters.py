@@ -14,6 +14,8 @@ class CHReadFilters(BaseModel):
     ip: Optional[str] = None
     source: Optional[str] = None
     profile: Optional[str] = None
+    page: int = 1
+    page_size: int = 100
 
 
 class CHSimpleFilters(BaseModel):

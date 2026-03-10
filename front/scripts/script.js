@@ -23,6 +23,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const IP_REGEX = /\b(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)){3}\b/;
 
     let exportedData = [];
+    let currentFilters = {};
+    let currentPage = 1;
 
     Auth.setSessionExpiredHandler(showLogin);
 
@@ -70,7 +72,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     window.addEventListener("click", () => profileMenu.classList.add("is-hidden"));
 
-    async function requestCH() {
+    async function requestCH(page = 1) {
         try {
             container.innerHTML = "<p style='padding:20px'>Загрузка...</p>";
 
@@ -82,7 +84,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 ? document.getElementById("filterDateTo").value + " " + (document.getElementById("filterTimeTo").value || "23:59:59")
                 : null;
 
-            const filters = {
+            currentFilters = {
                 blocked_at: exactDate,
                 period: (rangeStart || rangeEnd) ? {
                     from: rangeStart || null,
@@ -92,11 +94,12 @@ document.addEventListener("DOMContentLoaded", () => {
                 source: document.getElementById("filterSource").value || null,
                 profile: document.getElementById("filterProfile").value.trim() || null
             };
+            currentPage = page;
 
             const response = await Auth.authFetch(`${Auth.API_BASE}/ch/read`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(filters)
+                body: JSON.stringify({ ...currentFilters, page, page_size: 100 })
             });
 
             const result = await response.json();
@@ -104,7 +107,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
             if (!Array.isArray(exportedData)) throw new Error("Некорректный ответ сервера");
 
-            renderTable(exportedData);
+            renderTable(exportedData, result.page, result.total_pages);
         } catch (e) {
             if (e.message !== "Unauthorized") {
                 container.innerHTML = `<p style='padding:20px; color:red'>Ошибка: ${e.message}</p>`;
@@ -112,7 +115,31 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
-    function renderTable(data) {
+    async function goToPage(page) {
+        try {
+            container.innerHTML = "<p style='padding:20px'>Загрузка...</p>";
+            currentPage = page;
+
+            const response = await Auth.authFetch(`${Auth.API_BASE}/ch/read`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ ...currentFilters, page, page_size: 100 })
+            });
+
+            const result = await response.json();
+            exportedData = result.data || result;
+
+            if (!Array.isArray(exportedData)) throw new Error("Некорректный ответ сервера");
+
+            renderTable(exportedData, result.page, result.total_pages);
+        } catch (e) {
+            if (e.message !== "Unauthorized") {
+                container.innerHTML = `<p style='padding:20px; color:red'>Ошибка: ${e.message}</p>`;
+            }
+        }
+    }
+
+    function renderTable(data, page, totalPages) {
         if (!data.length) {
             container.innerHTML = "<p style='padding:20px'>Данные не найдены по заданным фильтрам</p>";
             return;
@@ -122,7 +149,24 @@ document.addEventListener("DOMContentLoaded", () => {
         data.forEach(row => {
             html += `<tr>${headers.map(key => `<td>${row[key] ?? ''}</td>`).join('')}</tr>`;
         });
-        container.innerHTML = html + "</tbody></table>";
+        html += "</tbody></table>";
+
+        if (totalPages > 1) {
+            html += `<div class="pagination">`;
+            html += `<button ${page <= 1 ? 'disabled' : ''} id="btnPrevPage">← Назад</button>`;
+            html += `<span>Страница ${page} из ${totalPages}</span>`;
+            html += `<button ${page >= totalPages ? 'disabled' : ''} id="btnNextPage">Вперёд →</button>`;
+            html += `</div>`;
+        }
+
+        container.innerHTML = html;
+
+        if (page > 1) {
+            document.getElementById("btnPrevPage")?.addEventListener("click", () => goToPage(page - 1));
+        }
+        if (page < totalPages) {
+            document.getElementById("btnNextPage")?.addEventListener("click", () => goToPage(page + 1));
+        }
     }
 
     async function requestDG() {
@@ -244,7 +288,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     btnApplyFilters.addEventListener("click", () => {
         rchFilterDialog.close();
-        requestCH();
+        requestCH(1);
     });
 
     document.getElementById("btnDG").addEventListener("click", () => dgFilterDialog.showModal());
