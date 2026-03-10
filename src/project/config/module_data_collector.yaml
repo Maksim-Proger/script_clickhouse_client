@@ -1,7 +1,7 @@
-#ab_client:
-#  url: "http://10.25.78.131/common_ipban"
-#  interval: 60.0
-#  timeout: 10
+ab_client:
+  url: "http://10.25.78.131/common_ipban"
+  interval: 60.0
+  timeout: 10
 
 nats:
   url: "nats://localhost:4222"

@@ -17,9 +17,9 @@ CONFIG_DATA_COLLECTOR["dg_defaults"] = DG_CONFIG.get("dg_defaults", {})
 
 def main() -> None:
     processes = [
-        Process(target=data_collector_main, args=(CONFIG_DATA_COLLECTOR,), name="data_collector"),
+        # Process(target=data_collector_main, args=(CONFIG_DATA_COLLECTOR,), name="data_collector"),
         Process(target=ch_api_gateway_main, args=(CONFIG_CH_API_GATEWAY,), name="ch_api_gateway"),
-        Process(target=ch_loader_main, args=(CONFIG_CH_LOADER,), name="ch_loader"),
+        # Process(target=ch_loader_main, args=(CONFIG_CH_LOADER,), name="ch_loader"),
     ]
 
     for p in processes:
