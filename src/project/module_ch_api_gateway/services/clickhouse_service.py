@@ -27,6 +27,9 @@ class ClickHouseService:
             f"blocked_at >= '{filters.period['from']}'",
             f"blocked_at <= '{filters.period['to']}'"
         ]
+        if filters.ip:
+            conditions.append(f"ip_address = '{filters.ip}'")
+
         where_clause = f"WHERE {' AND '.join(conditions)}"
         return f"SELECT ip_address, min(blocked_at) as first_detected, source, profile FROM feedgen.blocked_ips {where_clause} GROUP BY ip_address, source, profile ORDER BY first_detected DESC LIMIT 500"
 
