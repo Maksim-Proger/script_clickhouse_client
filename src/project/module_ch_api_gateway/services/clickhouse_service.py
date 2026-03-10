@@ -44,7 +44,7 @@ class ClickHouseService:
     async def get_blocked_ips(self, filters: CHReadFilters):
         data = await self.client.fetch_json(self._build_blocked_ips_query(filters))
         count = await self.client.fetch_json(self._build_count_query(filters))
-        total = count["data"][0]["total"]
+        total = int(count["data"][0]["total"])
         return {
             "data": data["data"],
             "total": total,
