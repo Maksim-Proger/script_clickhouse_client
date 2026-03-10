@@ -17,9 +17,14 @@ nats:
   dg_subject: "dg.load.command"
 
 clickhouse:
-  host: "10.81.0.136"
+  host: "192.168.100.113"
   http_port: 8123
   timeout_sec: 10
-  user: "feedgen"
-  password: "dien9ux9aithohbec0aephu5meYee4In"
+
+#clickhouse:
+#  host: "10.81.0.136"
+#  http_port: 8123
+#  timeout_sec: 10
+#  user: "feedgen"
+#  password: "dien9ux9aithohbec0aephu5meYee4In"
 
