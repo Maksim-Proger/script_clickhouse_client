@@ -17,6 +17,6 @@ dependencies = [
 
 [project.scripts]
 run-all = "project.launcher:main"
-nats-corn = "project.nats_corn.main:main"
-ch-client = "project.script_ch_client.main:main"
-ch-writer = "project.script_ch_writer.main:main"
+module_data_collector = "project.nats_corn.main:main"
+module_ch_api_gateway = "project.script_ch_client.main:main"
+module_ch_loader = "project.script_ch_writer.main:main"

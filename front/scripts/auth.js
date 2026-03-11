@@ -1,5 +1,4 @@
-//export const API_BASE = "http://10.25.86.13:8000";
-export const API_BASE = "http://192.168.100.113:8000";
+export const API_BASE = "http://10.25.86.13:8000";
 
 let accessToken = localStorage.getItem("token") || null;
 let currentLogin = localStorage.getItem("login") || "User";

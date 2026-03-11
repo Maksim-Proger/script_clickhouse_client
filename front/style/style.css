@@ -48,7 +48,10 @@ body {
 .login-field { display: flex; flex-direction: column; gap: 5px; font-size: 14px; margin-bottom: 10px;}
 .login-field:last-of-type { margin-bottom: 0; }
 .login-field input { padding: 10px; border: 1px solid #cfd6e0; border-radius: 8px; outline: none; }
-.login-button { padding: 12px; background: #4a6cf7; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; transition: background 0.2s; }
+.login-button {
+    padding: 12px; background: #4a6cf7; color: white; border: none; border-radius: 8px;
+    cursor: pointer; font-weight: 600; transition: background 0.2s;
+}
 .login-button:hover { background: #3a5ce6; }
 
 .sidebar {
@@ -99,7 +102,10 @@ body {
 #data-list { padding: 0; width: 100%; }
 
 table { width: 100%; border-collapse: collapse; min-width: 600px; }
-th { position: sticky; top: 0; background: #f8fafc; z-index: 10; padding: 12px; border-bottom: 2px solid #e2e8f0; text-align: left; font-size: 13px; color: #64748b; }
+th {
+    position: sticky; top: 0; background: #f8fafc; z-index: 10; padding: 12px; border-bottom: 2px solid #e2e8f0;
+    text-align: left; font-size: 13px; color: #64748b;
+}
 td { padding: 12px; border-bottom: 1px solid #f1f5f9; font-size: 14px; }
 
 .pagination {
@@ -163,9 +169,15 @@ td { padding: 12px; border-bottom: 1px solid #f1f5f9; font-size: 14px; }
 
 .dialog-actions { display: flex; justify-content: flex-end; gap: 10px; }
 
-.primary-button { padding: 10px 20px; background: #4a6cf7; color: white; border: none; border-radius: 8px; cursor: pointer; transition: background 0.2s; }
+.primary-button {
+    padding: 10px 20px; background: #4a6cf7; color: white; border: none; border-radius: 8px;
+    cursor: pointer; transition: background 0.2s;
+}
 .primary-button:hover { background: #3a5ce6; }
-.secondary-button { padding: 10px 20px; background: #f1f5f9; color: #475569; border: none; border-radius: 8px; cursor: pointer; transition: background 0.2s; }
+.secondary-button {
+    padding: 10px 20px; background: #f1f5f9; color: #475569; border: none;
+    border-radius: 8px; cursor: pointer; transition: background 0.2s;
+}
 .secondary-button:hover { background: #e2e8f0; }
 
 .profile-menu {

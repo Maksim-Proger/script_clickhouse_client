@@ -23,7 +23,11 @@ class ClickHouseService:
         conditions = ClickHouseService._build_conditions(filters)
         where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
         offset = (filters.page - 1) * filters.page_size
-        return f"SELECT * FROM feedgen.blocked_ips {where_clause} ORDER BY blocked_at DESC LIMIT {filters.page_size} OFFSET {offset}"
+        return (
+            f"SELECT * FROM feedgen.blocked_ips {where_clause} "
+            f"ORDER BY blocked_at DESC "
+            f"LIMIT {filters.page_size} OFFSET {offset}"
+        )
 
     @staticmethod
     def _build_count_query(filters: CHReadFilters) -> str:
@@ -39,7 +43,12 @@ class ClickHouseService:
             f"blocked_at <= '{filters.period['to']}'"
         ]
         where_clause = f"WHERE {' AND '.join(conditions)}"
-        return f"SELECT ip_address, min(blocked_at) as first_detected, source, profile FROM feedgen.blocked_ips {where_clause} GROUP BY ip_address, source, profile ORDER BY first_detected DESC LIMIT 500"
+        return (
+            f"SELECT ip_address, min(blocked_at) as first_detected, source, profile "
+            f"FROM feedgen.blocked_ips {where_clause} "
+            f"GROUP BY ip_address, source, profile "
+            f"ORDER BY first_detected DESC LIMIT 500"
+        )
 
     async def get_blocked_ips(self, filters: CHReadFilters):
         data = await self.client.fetch_json(self._build_blocked_ips_query(filters))

@@ -40,7 +40,7 @@ class AbProducer:
                         if self.lifecycle.is_shutting_down:
                             break
                         # Отправляем данные из AB в NATS.
-                        # await self.nc.publish("ch.write.raw", json.dumps(record).encode())
+                        await self.nc.publish("ch.write.raw", json.dumps(record).encode())
 
                 except Exception as req_err:
                     logger.error("action=ipban_fetch_failed error=%s", str(req_err))
