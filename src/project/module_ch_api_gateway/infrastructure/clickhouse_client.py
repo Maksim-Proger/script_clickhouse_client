@@ -20,7 +20,7 @@ class ClickHouseClient:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 resp = await client.get(
                     self.url,
-                    params={"query": sql},
+                    params={"query": sql, "max_rows_to_read": 0},
                     auth=(self.user, self.password)
                 )
                 resp.raise_for_status()
