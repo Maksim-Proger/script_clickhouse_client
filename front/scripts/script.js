@@ -123,6 +123,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function renderTable(data, page, totalPages) {
+        console.log("renderTable called:", page, totalPages);
         if (!data || !data.length) {
             container.innerHTML = "<p style='padding:20px'>Данные не найдены по заданным фильтрам</p>";
             return;
