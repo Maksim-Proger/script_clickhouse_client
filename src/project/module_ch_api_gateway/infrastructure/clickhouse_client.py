@@ -1,6 +1,7 @@
 import logging
 import time
 import httpx
+import base64
 
 logger = logging.getLogger("ch-api-gateway")
 
@@ -19,18 +20,29 @@ class ClickHouseClient:
         return self._client
 
     async def fetch_json(self, query: str) -> dict:
+        import base64
+
         sql = f"{query} FORMAT JSON"
         start_time = time.perf_counter()
+
+        auth_value = base64.b64encode(f"{self.user}:{self.password}".encode()).decode()
+        headers = {
+            "Authorization": f"Basic {auth_value}",
+            "Content-Type": "application/octet-stream"
+        }
+
         try:
             resp = await self._get_client().post(
                 self.url,
                 content=sql,
-                auth=(self.user, self.password)
+                headers=headers
             )
+
             resp.raise_for_status()
 
             duration = time.perf_counter() - start_time
             logger.info("action=ch_query_success duration=%.2fs query=\"%s\"", duration, query[:100])
+
             return resp.json()
 
         except httpx.TimeoutException:

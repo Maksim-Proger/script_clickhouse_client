@@ -123,32 +123,44 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function renderTable(data, page, totalPages) {
-        if (!data.length) {
+        if (!data || !data.length) {
             container.innerHTML = "<p style='padding:20px'>Данные не найдены по заданным фильтрам</p>";
             return;
         }
+
         const headers = Object.keys(data[0]);
         let html = `<table><thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>`;
+
         data.forEach(row => {
             html += `<tr>${headers.map(key => `<td>${row[key] ?? ''}</td>`).join('')}</tr>`;
         });
+
         html += "</tbody></table>";
 
         if (totalPages > 1) {
-            html += `<div class="pagination">`;
-            html += `<button ${page <= 1 ? 'disabled' : ''} id="btnPrevPage">← Назад</button>`;
-            html += `<span>Страница ${page} из ${totalPages}</span>`;
-            html += `<button ${page >= totalPages ? 'disabled' : ''} id="btnNextPage">Вперёд →</button>`;
-            html += `</div>`;
+            html += `
+            <div class="pagination">
+                <button id="btnPrevPage" ${page <= 1 ? 'disabled' : ''}>← Назад</button>
+                <span>Страница ${page} из ${totalPages}</span>
+                <button id="btnNextPage" ${page >= totalPages ? 'disabled' : ''}>Вперёд →</button>
+            </div>`;
         }
 
         container.innerHTML = html;
 
-        if (page > 1) {
-            document.getElementById("btnPrevPage")?.addEventListener("click", () => goToPage(page - 1));
+        const prevBtn = document.getElementById("btnPrevPage");
+        const nextBtn = document.getElementById("btnNextPage");
+
+        if (prevBtn) {
+            prevBtn.onclick = () => {
+                if (page > 1) goToPage(page - 1);
+            };
         }
-        if (page < totalPages) {
-            document.getElementById("btnNextPage")?.addEventListener("click", () => goToPage(page + 1));
+
+        if (nextBtn) {
+            nextBtn.onclick = () => {
+                if (page < totalPages) goToPage(page + 1);
+            };
         }
     }
 
