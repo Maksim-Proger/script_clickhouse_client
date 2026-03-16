@@ -13,8 +13,16 @@ def _extract_records(obj: Any,
                      result: List[dict],
                      source: str,
                      profile: str,
-                     dt_format: str) -> None:
+                     dt_format: str,
+                     filter_expired: bool = True) -> None:
     if isinstance(obj, dict):
+        if filter_expired:
+            expire = obj.get("expire")
+            if expire is not None and int(expire) == -1:
+                for v in obj.values():
+                    _extract_records(v, result, source, profile, dt_format, filter_expired)
+                return
+
         ip_candidates: List[str] = []
 
         for k, v in obj.items():
@@ -46,11 +54,11 @@ def _extract_records(obj: Any,
             })
 
         for v in obj.values():
-            _extract_records(v, result, source, profile, dt_format)
+            _extract_records(v, result, source, profile, dt_format, filter_expired)
 
     elif isinstance(obj, list):
         for item in obj:
-            _extract_records(item, result, source, profile, dt_format)
+            _extract_records(item, result, source, profile, dt_format, filter_expired)
 
 
 def _parse_datetime(value: Any, dt_format: str) -> str:
@@ -66,14 +74,15 @@ def _parse_datetime(value: Any, dt_format: str) -> str:
 def parse_input(data: str,
                 source: str,
                 profile: str = "",
-                dt_format: str = "%Y-%m-%d %H:%M:%S") -> List[dict]:
+                dt_format: str = "%Y-%m-%d %H:%M:%S",
+                filter_expired: bool = True) -> List[dict]:
     if not data or not data.strip():
         return []
 
     records: List[dict] = []
     try:
         parsed = json.loads(data)
-        _extract_records(parsed, records, source, profile, dt_format)
+        _extract_records(parsed, records, source, profile, dt_format, filter_expired)
     except Exception:
         now = datetime.now(timezone.utc).strftime(dt_format)
         for ip in IP_REGEX.findall(data):

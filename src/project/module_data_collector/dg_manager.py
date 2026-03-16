@@ -13,14 +13,14 @@ class DgSourceManager:
         self.nc = nc
         self.lifecycle = lifecycle
 
-        dg_timeout = config.get("dg_defaults", {}).get("timeout", 10)
-        self.client = DgClient(timeout=dg_timeout)
-
         self.defaults = config.get("dg_defaults", {})
         self.sources = {src["name"]: src for src in config.get("dg_sources", [])}
         self.dt_format = config.get("parser", {}).get("clickhouse_dt_format", "%Y-%m-%d %H:%M:%S")
 
-    async def _execute(self, name: str, url: str, headers: dict, payload: dict):
+        dg_timeout = self.defaults.get("timeout", 10)
+        self.client = DgClient(timeout=dg_timeout, verify_ssl=self.defaults.get("verify_ssl", False))
+
+    async def _execute(self, name: str, url: str, headers: dict, payload: dict, filter_expired: bool = True):
         try:
             logger.info("action=execute_request profile=%s", name)
 
@@ -30,7 +30,8 @@ class DgSourceManager:
                 raw_data,
                 source="dosgate",
                 profile=name,
-                dt_format=self.dt_format
+                dt_format=self.dt_format,
+                filter_expired=filter_expired
             )
 
             if not records:
@@ -40,7 +41,7 @@ class DgSourceManager:
                 if self.lifecycle.is_shutting_down:
                     break
                 # Отправляем нормализованные данные в ClickHouse loader через NATS
-                # await self.nc.publish("ch.write.raw", json.dumps(record).encode())
+                await self.nc.publish("ch.write.raw", json.dumps(record).encode())
 
         except Exception as e:
             logger.error("action=request_failed profile=%s error=%s", name, str(e))
@@ -85,7 +86,8 @@ class DgSourceManager:
             name=profile_name,
             url=self.defaults.get("url"),
             headers=self.defaults.get("headers"),
-            payload=final_payload
+            payload=final_payload,
+            filter_expired=False
         )
 
     async def _worker_loop(self, name: str, interval: int):

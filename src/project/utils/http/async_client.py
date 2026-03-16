@@ -4,13 +4,17 @@ import httpx
 
 
 class BaseAsyncHttpClient:
-    def __init__(self, timeout: int = 10):
+    def __init__(self, timeout: int = 10, verify_ssl: bool = True):
         self.timeout = timeout
+        self.verify_ssl = verify_ssl
         self._client: Optional[httpx.AsyncClient] = None
 
     async def connect(self) -> None:
         if not self._client:
-            self._client = httpx.AsyncClient(timeout=self.timeout)
+            self._client = httpx.AsyncClient(
+                timeout=self.timeout,
+                verify=self.verify_ssl
+            )
 
     async def close(self) -> None:
         if self._client:
