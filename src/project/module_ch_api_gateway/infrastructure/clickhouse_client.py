@@ -22,18 +22,26 @@ class ClickHouseClient:
         sql = f"{query} FORMAT JSON"
         start_time = time.perf_counter()
         try:
-            resp = await self._get_client().get(
+            resp = await self._get_client().post(
                 self.url,
-                params={"query": sql, "max_rows_to_read": 0},  # ← сохранили из оригинала
+                content=sql,
+                params={"max_rows_to_read": 0},
                 auth=(self.user, self.password)
             )
             resp.raise_for_status()
+
             duration = time.perf_counter() - start_time
             logger.info("action=ch_query_success duration=%.2fs query=\"%s\"", duration, query[:100])
             return resp.json()
+
         except httpx.TimeoutException:
             logger.error("action=ch_query_timeout query=\"%s\"", query[:100])
             raise
+
+        except httpx.HTTPStatusError as e:
+            logger.error("action=ch_query_failed status=%s error=%s", e.response.status_code, e.response.text)
+            raise
+
         except Exception as e:
             logger.error("action=ch_query_failed error=%s", str(e))
             raise

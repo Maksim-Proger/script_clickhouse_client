@@ -1,7 +1,8 @@
-import asyncio
+import logging
 
 from project.module_ch_api_gateway.models.filters import CHReadFilters, CHSimpleFilters
 
+logger = logging.getLogger("ch-api-gateway")
 
 class ClickHouseService:
     def __init__(self, client):
@@ -53,17 +54,21 @@ class ClickHouseService:
         )
 
     async def get_blocked_ips(self, filters: CHReadFilters):
-        data, count = await asyncio.gather(
-            self.client.fetch_json(self._build_blocked_ips_query(filters)),
-            self.client.fetch_json(self._build_count_query(filters))
-        )
-        total = int(count["data"][0]["total"])
+        data = await self.client.fetch_json(self._build_blocked_ips_query(filters))
+
+        try:
+            count_res = await self.client.fetch_json(self._build_count_query(filters))
+            total = int(count_res["data"][0]["total"])
+        except Exception as e:
+            logger.warning("action=ch_count_failed error=%s", str(e))
+            total = len(data.get("data", []))
+
         return {
-            "data": data["data"],
+            "data": data.get("data", []),
             "total": total,
             "page": filters.page,
             "page_size": filters.page_size,
-            "total_pages": (total + filters.page_size - 1) // filters.page_size
+            "total_pages": (total + filters.page_size - 1) // filters.page_size if total > 0 else 1
         }
 
     async def get_simple_ips(self, filters: CHSimpleFilters):
