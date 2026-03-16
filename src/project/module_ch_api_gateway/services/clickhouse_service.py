@@ -54,17 +54,22 @@ class ClickHouseService:
         )
 
     async def get_blocked_ips(self, filters: CHReadFilters):
-        data = await self.client.fetch_json(self._build_blocked_ips_query(filters))
+        try:
+            data_res = await self.client.fetch_json(self._build_blocked_ips_query(filters))
+            data = data_res.get("data", [])
+        except Exception as e:
+            logger.error("action=ch_data_fetch_failed error=%s", str(e))
+            data = []
 
         try:
             count_res = await self.client.fetch_json(self._build_count_query(filters))
             total = int(count_res["data"][0]["total"])
         except Exception as e:
             logger.warning("action=ch_count_failed error=%s", str(e))
-            total = len(data.get("data", []))
+            total = len(data)
 
         return {
-            "data": data.get("data", []),
+            "data": data,
             "total": total,
             "page": filters.page,
             "page_size": filters.page_size,

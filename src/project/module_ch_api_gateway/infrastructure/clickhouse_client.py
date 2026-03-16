@@ -25,7 +25,6 @@ class ClickHouseClient:
             resp = await self._get_client().post(
                 self.url,
                 content=sql,
-                params={"max_rows_to_read": 0},
                 auth=(self.user, self.password)
             )
             resp.raise_for_status()

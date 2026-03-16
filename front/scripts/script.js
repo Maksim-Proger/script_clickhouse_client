@@ -103,11 +103,11 @@ document.addEventListener("DOMContentLoaded", () => {
             });
 
             const result = await response.json();
-            exportedData = result.data || result;
+            exportedData = result.data || [];
 
             if (!Array.isArray(exportedData)) throw new Error("Некорректный ответ сервера");
 
-            renderTable(exportedData, result.page, result.total_pages);
+            renderTable(exportedData, result.page || 1, result.total_pages || 1);
         } catch (e) {
             if (e.message !== "Unauthorized") {
                 container.innerHTML = `<p style='padding:20px; color:red'>Ошибка: ${e.message}</p>`;
@@ -116,27 +116,10 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     async function goToPage(page) {
-        try {
-            container.innerHTML = "<p style='padding:20px'>Загрузка...</p>";
-            currentPage = page;
+        const dataScreen = document.querySelector('.data-screen');
+        if (dataScreen) dataScreen.scrollTop = 0;
 
-            const response = await Auth.authFetch(`${Auth.API_BASE}/ch/read`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ ...currentFilters, page, page_size: 100 })
-            });
-
-            const result = await response.json();
-            exportedData = result.data || result;
-
-            if (!Array.isArray(exportedData)) throw new Error("Некорректный ответ сервера");
-
-            renderTable(exportedData, result.page, result.total_pages);
-        } catch (e) {
-            if (e.message !== "Unauthorized") {
-                container.innerHTML = `<p style='padding:20px; color:red'>Ошибка: ${e.message}</p>`;
-            }
-        }
+        await requestCH(page);
     }
 
     function renderTable(data, page, totalPages) {
