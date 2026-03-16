@@ -19,8 +19,6 @@ def _extract_records(obj: Any,
         if filter_expired:
             expire = obj.get("expire")
             if expire is not None and int(expire) == -1:
-                for v in obj.values():
-                    _extract_records(v, result, source, profile, dt_format, filter_expired)
                 return
 
         ip_candidates: List[str] = []
