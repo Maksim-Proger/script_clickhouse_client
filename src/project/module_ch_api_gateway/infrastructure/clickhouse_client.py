@@ -12,6 +12,7 @@ class ClickHouseClient:
         self.timeout = timeout_sec
         self.user = user
         self.password = password
+        self._client = httpx.AsyncClient(timeout=timeout_sec)
 
     async def fetch_json(self, query: str) -> dict:
         sql = f"{query} FORMAT JSON"
@@ -34,3 +35,6 @@ class ClickHouseClient:
         except Exception as e:
             logger.error("action=ch_query_failed error=%s", str(e))
             raise
+
+    async def close(self):
+        await self._client.aclose()

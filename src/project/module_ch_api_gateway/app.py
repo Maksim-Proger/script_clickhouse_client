@@ -1,8 +1,9 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from project.module_ch_api_gateway.api.routers import clickhouse_router, auth_router, data_router
 from project.module_ch_api_gateway.infrastructure.clickhouse_client import ClickHouseClient
@@ -42,6 +43,14 @@ def create_app(config: dict) -> FastAPI:
         allow_methods=config["cors"]["allow_methods"],
         allow_headers=config["cors"]["allow_headers"],
     )
+
+    @app.exception_handler(Exception)
+    async def global_exception_handler(request: Request, exc: Exception):
+        logger.error("action=unhandled_exception error=%s path=%s", str(exc), request.url.path)
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Internal server error"}
+        )
 
     app.include_router(auth_router.router)
     app.include_router(clickhouse_router.router)
