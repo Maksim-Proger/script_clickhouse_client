@@ -1,7 +1,9 @@
 import logging
 import re
+import asyncio
 
 from project.module_ch_api_gateway.models.filters import CHReadFilters, CHSimpleFilters
+from project.module_ch_api_gateway.infrastructure.clickhouse_client import ClickHouseClient
 
 logger = logging.getLogger("ch-api-gateway")
 
@@ -30,7 +32,7 @@ def _safe_date(value: str) -> str:
 
 
 class ClickHouseService:
-    def __init__(self, client):
+    def __init__(self, client: ClickHouseClient):
         self.client = client
 
     @staticmethod
@@ -98,19 +100,16 @@ class ClickHouseService:
         )
 
     async def get_blocked_ips(self, filters: CHReadFilters):
-        try:
-            data_res = await self.client.fetch_json(self._build_blocked_ips_query(filters))
-            data = data_res.get("data", [])
-        except Exception as e:
-            logger.error("action=ch_data_fetch_failed error=%s", str(e))
-            data = []
+        data_task = self.client.fetch_json(self._build_blocked_ips_query(filters))
+        count_task = self.client.fetch_json(self._build_count_query(filters))
 
         try:
-            count_res = await self.client.fetch_json(self._build_count_query(filters))
+            data_res, count_res = await asyncio.gather(data_task, count_task)
+            data = data_res.get("data", [])
             total = int(count_res["data"][0]["total"])
         except Exception as e:
-            logger.warning("action=ch_count_failed error=%s", str(e))
-            total = len(data)
+            logger.error("action=ch_fetch_failed error=%s", str(e))
+            data, total = [], 0
 
         return {
             "data": data,

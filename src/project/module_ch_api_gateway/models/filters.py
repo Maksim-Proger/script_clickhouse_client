@@ -10,7 +10,7 @@ class PeriodFilter(BaseModel):
 
 class CHReadFilters(BaseModel):
     blocked_at: Optional[str] = None
-    period: Optional[dict] = None
+    period: Optional[PeriodFilter] = None
     ip: Optional[str] = None
     source: Optional[str] = None
     profile: Optional[str] = None
