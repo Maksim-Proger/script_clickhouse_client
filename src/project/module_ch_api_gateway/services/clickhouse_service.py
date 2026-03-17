@@ -1,6 +1,5 @@
 import logging
 import re
-import asyncio
 
 from project.module_ch_api_gateway.models.filters import CHReadFilters, CHSimpleFilters
 from project.module_ch_api_gateway.infrastructure.clickhouse_client import ClickHouseClient
@@ -43,12 +42,10 @@ class ClickHouseService:
             conditions.append(f"toDate(blocked_at) = '{_safe_date(filters.blocked_at)}'")
 
         if filters.period:
-            p_from = filters.period.get("from")
-            p_to = filters.period.get("to")
-            if p_from:
-                conditions.append(f"blocked_at >= '{_safe_date(p_from)}'")
-            if p_to:
-                conditions.append(f"blocked_at <= '{_safe_date(p_to)}'")
+            if filters.period.from_date:
+                conditions.append(f"blocked_at >= '{_safe_date(filters.period.from_date)}'")
+            if filters.period.to_date:
+                conditions.append(f"blocked_at <= '{_safe_date(filters.period.to_date)}'")
 
         if filters.ip:
             conditions.append(f"ip_address = '{_safe_ip(filters.ip)}'")
@@ -67,7 +64,7 @@ class ClickHouseService:
         where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
         offset = (filters.page - 1) * filters.page_size
         return (
-            f"SELECT * FROM feedgen.blocked_ips {where_clause} "
+            f"SELECT * FROM `feedgen`.`blocked_ips` {where_clause} "
             f"ORDER BY blocked_at DESC "
             f"LIMIT {filters.page_size} OFFSET {offset}"
         )
@@ -76,15 +73,15 @@ class ClickHouseService:
     def _build_count_query(filters: CHReadFilters) -> str:
         conditions = ClickHouseService._build_conditions(filters)
         where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-        return f"SELECT count() as total FROM feedgen.blocked_ips {where_clause}"
+        return f"SELECT count() as total FROM `feedgen`.`blocked_ips` {where_clause}"
 
     @staticmethod
     def _build_deduplicated_query(filters: CHSimpleFilters) -> str:
-        p_from = filters.period.get("from")
-        p_to = filters.period.get("to")
+        p_from = filters.period.from_date
+        p_to = filters.period.to_date
 
         if not p_from or not p_to:
-            raise ValueError("CHSimpleFilters.period должен содержать ключи 'from' и 'to'")
+            raise ValueError("В фильтре периода должны быть указаны даты 'from' и 'to'")
 
         conditions = [
             f"profile = '{_escape_str(filters.profile)}'",
@@ -94,19 +91,21 @@ class ClickHouseService:
         where_clause = f"WHERE {' AND '.join(conditions)}"
         return (
             f"SELECT ip_address, min(blocked_at) as first_detected, source, profile "
-            f"FROM feedgen.blocked_ips {where_clause} "
+            f"FROM `feedgen`.`blocked_ips` {where_clause} "
             f"GROUP BY ip_address, source, profile "
             f"ORDER BY first_detected DESC LIMIT 500"
         )
 
     async def get_blocked_ips(self, filters: CHReadFilters):
-        data_task = self.client.fetch_json(self._build_blocked_ips_query(filters))
-        count_task = self.client.fetch_json(self._build_count_query(filters))
-
         try:
-            data_res, count_res = await asyncio.gather(data_task, count_task)
+            data_query = self._build_blocked_ips_query(filters)
+            data_res = await self.client.fetch_json(data_query)
             data = data_res.get("data", [])
+
+            count_query = self._build_count_query(filters)
+            count_res = await self.client.fetch_json(count_query)
             total = int(count_res["data"][0]["total"])
+
         except Exception as e:
             logger.error("action=ch_fetch_failed error=%s", str(e))
             data, total = [], 0

@@ -20,5 +20,5 @@ class CHReadFilters(BaseModel):
 
 class CHSimpleFilters(BaseModel):
     profile: str
-    period: Dict[str, str]
+    period: PeriodFilter
     ip: Optional[str] = None
