@@ -14,14 +14,17 @@ logger = logging.getLogger("ch-api-gateway")
 
 def create_app(config: dict) -> FastAPI:
     @asynccontextmanager
-    async def lifespan(app: FastAPI):
-        await app.state.nats_infra.connect()
+    async def lifespan(lifespan_app: FastAPI):
+        await lifespan_app.state.nats_infra.connect()
         logger.info("action=nats_connect status=success")
         try:
             yield
         finally:
-            await app.state.nats_infra.close()
+            await lifespan_app.state.nats_infra.close()
             logger.info("action=nats_disconnect status=success")
+
+            await lifespan_app.state.ch_client.close()
+            logger.info("action=ch_client_close status=success")
 
     app = FastAPI(lifespan=lifespan)
 

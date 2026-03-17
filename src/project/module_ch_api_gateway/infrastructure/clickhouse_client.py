@@ -1,10 +1,8 @@
 import logging
 import time
 import httpx
-import base64
 
 logger = logging.getLogger("ch-api-gateway")
-
 
 class ClickHouseClient:
     def __init__(self, host: str, port: int, timeout_sec: int, user: str, password: str):
@@ -16,24 +14,21 @@ class ClickHouseClient:
 
     def _get_client(self) -> httpx.AsyncClient:
         if self._client is None:
-            self._client = httpx.AsyncClient(timeout=self.timeout_sec)
+            self._client = httpx.AsyncClient(
+                timeout=self.timeout_sec,
+                auth=(self.user, self.password),
+                headers={"Content-Type": "text/plain"}
+            )
         return self._client
 
     async def fetch_json(self, query: str) -> dict:
         sql = f"{query} FORMAT JSON"
         start_time = time.perf_counter()
 
-        auth_value = base64.b64encode(f"{self.user}:{self.password}".encode()).decode()
-        headers = {
-            "Authorization": f"Basic {auth_value}",
-            "Content-Type": "text/plain"
-        }
-
         try:
             resp = await self._get_client().post(
                 self.url,
-                content=sql.encode("utf-8"),
-                headers=headers
+                content=sql.encode("utf-8")
             )
 
             resp.raise_for_status()
@@ -48,7 +43,11 @@ class ClickHouseClient:
             raise
 
         except httpx.HTTPStatusError as e:
-            logger.error("action=ch_query_failed status=%s error=%s", e.response.status_code, e.response.text)
+            logger.error(
+                "action=ch_query_failed status=%s error=%s",
+                e.response.status_code,
+                e.response.text
+            )
             raise
 
         except Exception as e:
