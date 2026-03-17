@@ -15,6 +15,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const exportDialog = document.getElementById("exportDialog");
     const rchFilterDialog = document.getElementById("rchFilterDialog");
     const container = document.getElementById("data-list");
+    const paginationContainer = document.getElementById("pagination-container");
     const fileInput = document.getElementById("fileInput");
     const btnUploadFile = document.getElementById("btnUploadFile");
     const btnConfirmExport = document.getElementById("btnConfirmExport");
@@ -75,6 +76,7 @@ document.addEventListener("DOMContentLoaded", () => {
     async function requestCH(page = 1) {
         try {
             container.innerHTML = "<p style='padding:20px'>Загрузка...</p>";
+            paginationContainer.innerHTML = "";
 
             const exactDate = document.getElementById("filterDate").value || null;
             const rangeStart = document.getElementById("filterDateFrom").value
@@ -123,7 +125,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function renderTable(data, page, totalPages) {
-        console.log("renderTable called:", page, totalPages);
+        paginationContainer.innerHTML = "";
+
         if (!data || !data.length) {
             container.innerHTML = "<p style='padding:20px'>Данные не найдены по заданным фильтрам</p>";
             return;
@@ -137,31 +140,22 @@ document.addEventListener("DOMContentLoaded", () => {
         });
 
         html += "</tbody></table>";
+        container.innerHTML = html;
 
         if (totalPages > 1) {
-            html += `
-            <div class="pagination">
+            const pag = document.createElement("div");
+            pag.className = "pagination";
+            pag.innerHTML = `
                 <button id="btnPrevPage" ${page <= 1 ? 'disabled' : ''}>← Назад</button>
                 <span>Страница ${page} из ${totalPages}</span>
                 <button id="btnNextPage" ${page >= totalPages ? 'disabled' : ''}>Вперёд →</button>
-            </div>`;
-        }
+            `;
+            paginationContainer.appendChild(pag);
 
-        container.innerHTML = html;
-
-        const prevBtn = document.getElementById("btnPrevPage");
-        const nextBtn = document.getElementById("btnNextPage");
-
-        if (prevBtn) {
-            prevBtn.onclick = () => {
-                if (page > 1) goToPage(page - 1);
-            };
-        }
-
-        if (nextBtn) {
-            nextBtn.onclick = () => {
-                if (page < totalPages) goToPage(page + 1);
-            };
+            paginationContainer.querySelector("#btnPrevPage")
+                ?.addEventListener("click", () => { if (page > 1) goToPage(page - 1); });
+            paginationContainer.querySelector("#btnNextPage")
+                ?.addEventListener("click", () => { if (page < totalPages) goToPage(page + 1); });
         }
     }
 

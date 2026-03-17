@@ -20,21 +20,19 @@ class ClickHouseClient:
         return self._client
 
     async def fetch_json(self, query: str) -> dict:
-        import base64
-
         sql = f"{query} FORMAT JSON"
         start_time = time.perf_counter()
 
         auth_value = base64.b64encode(f"{self.user}:{self.password}".encode()).decode()
         headers = {
             "Authorization": f"Basic {auth_value}",
-            "Content-Type": "application/octet-stream"
+            "Content-Type": "text/plain"
         }
 
         try:
             resp = await self._get_client().post(
                 self.url,
-                content=sql,
+                content=sql.encode("utf-8"),
                 headers=headers
             )
 

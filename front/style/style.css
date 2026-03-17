@@ -88,15 +88,21 @@ body {
     flex-direction: column;
     padding: 15px;
     height: 100vh;
+    /* gap между таблицей и пагинацией не нужен — пагинация сама имеет border-top */
 }
 
 .data-screen {
     flex: 1;
     background: #fff;
     border: 1px solid #e2e8f0;
-    border-radius: 12px;
+    border-radius: 12px 12px 0 0; /* скруглены только верхние углы — снизу примыкает пагинация */
     overflow: auto;
     box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);
+}
+
+/* Когда пагинации нет — возвращаем скругление всех углов */
+.data-screen:last-child {
+    border-radius: 12px;
 }
 
 #data-list { padding: 0; width: 100%; }
@@ -108,16 +114,23 @@ th {
 }
 td { padding: 12px; border-bottom: 1px solid #f1f5f9; font-size: 14px; }
 
+/* Контейнер пагинации — вне data-screen, поэтому не скроллится вместе с таблицей */
+#pagination-container {
+    flex-shrink: 0;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-top: none;
+    border-radius: 0 0 12px 12px;
+}
+
+/* Пагинация всегда по центру на полной ширине контентной зоны */
 .pagination {
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 15px;
-    padding: 15px;
+    padding: 12px 15px;
     border-top: 1px solid #e2e8f0;
-    position: sticky;
-    bottom: 0;
-    background: #fff;
 }
 
 .pagination button {
