@@ -23,3 +23,12 @@ clickhouse:
   user: "feedgen"
   password: "dien9ux9aithohbec0aephu5meYee4In"
 
+postgres:
+  host: "localhost"
+  port: 5432
+  database: "clients_db"
+  user: "ch_gateway"
+  password: "Ch_gw_2026!"
+  min_connections: 2
+  max_connections: 10
+

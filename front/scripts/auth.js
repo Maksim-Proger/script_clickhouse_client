@@ -35,7 +35,15 @@ export async function login(login, password) {
     return false;
 }
 
-export function logout() {
+export async function logout() {
+    if (accessToken) {
+        try {
+            await fetch(`${API_BASE}/logout`, {
+                method: "POST",
+                headers: { "Authorization": `Bearer ${accessToken}` }
+            });
+        } catch (_) {}
+    }
     accessToken = null;
     currentLogin = "User";
     localStorage.removeItem("token");
@@ -57,7 +65,7 @@ export async function authFetch(url, options = {}) {
     const response = await fetch(url, config);
 
     if (response.status === 401) {
-        logout();
+        await logout();
         sessionExpiredCallback();
         throw new Error("Unauthorized");
     }

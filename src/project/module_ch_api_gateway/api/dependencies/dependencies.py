@@ -16,9 +16,14 @@ def get_config(request: Request):
     return request.app.state.config
 
 
+def get_user_service(request: Request):
+    return request.app.state.user_service
+
+
 async def get_current_user(
         auth_creds: HTTPAuthorizationCredentials = Depends(security),
-        config=Depends(get_config)
+        config=Depends(get_config),
+        user_service=Depends(get_user_service),
 ):
     token = auth_creds.credentials
     secret_key = config["auth"]["secret_key"]
@@ -29,7 +34,6 @@ async def get_current_user(
 
     try:
         payload = jwt.decode(token, secret_key, algorithms=["HS256"])
-        return payload
     except ExpiredSignatureError:
         logger.warning("action=auth_failed error=token_expired")
         raise HTTPException(
@@ -42,6 +46,16 @@ async def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Невалидный токен"
         )
+
+    jti = payload.get("jti")
+    if jti and user_service.is_session_revoked(jti):
+        logger.warning("action=auth_failed error=session_revoked jti=%s", jti)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Сессия отозвана. Войдите заново."
+        )
+
+    return payload
 
 
 def get_ch_service(request: Request) -> ClickHouseService:

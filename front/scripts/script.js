@@ -41,10 +41,10 @@ document.addEventListener("DOMContentLoaded", () => {
         currentUserSpan.textContent = Auth.getCurrentLogin();
     }
 
-    function showLogin() {
+    async function showLogin() {
         appRoot.classList.add("is-hidden");
         loginPage.classList.remove("is-hidden");
-        Auth.logout();
+        await Auth.logout();
     }
 
     loginForm.addEventListener("submit", async (e) => {

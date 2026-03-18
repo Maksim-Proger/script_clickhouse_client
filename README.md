@@ -1,0 +1,1 @@
+![Интерфейс](docs/images/web_ui.png)

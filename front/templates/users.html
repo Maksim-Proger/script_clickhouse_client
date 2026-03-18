@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Пользователи — CH SERVICE</title>
+    <link rel="icon" href="data:;base64,iVBORw0KGgo=">
+    <link rel="stylesheet" href="../style/style.css">
+</head>
+<body>
+
+<div class="app">
+    <div class="sidebar">
+        <div class="profile-container">
+            <button class="profile-button" id="profileBtn">&#128100;</button>
+            <div class="profile-menu is-hidden" id="profileMenu">
+                <div class="profile-info">
+                    <span class="profile-label">Логин:</span>
+                    <span class="profile-value" id="currentUser">admin</span>
+                </div>
+                <hr class="menu-divider">
+                <button class="logout-button" id="btnLogout">Выйти</button>
+            </div>
+        </div>
+
+        <button class="action" onclick="window.location.href='new_index.html'">Назад</button>
+
+        <hr class="menu-divider">
+
+        <h4 style="margin: 0 0 10px 0; color: #64748b; font-size: 13px;">Новый пользователь</h4>
+        <label class="login-field">
+            <span>Логин</span>
+            <input type="text" id="newUsername" placeholder="Логин">
+        </label>
+        <label class="login-field">
+            <span>Пароль</span>
+            <input type="password" id="newPassword" placeholder="Пароль">
+        </label>
+        <button class="action" id="btnCreateUser" style="background:#4a6cf7; color:white;">Создать</button>
+    </div>
+
+    <div class="content">
+        <div class="data-screen">
+            <div id="users-list" style="padding: 20px;">Загрузка...</div>
+        </div>
+    </div>
+</div>
+
+<dialog id="changePasswordDialog" class="modern-dialog">
+    <div class="dialog-content">
+        <h3>Сменить пароль</h3>
+        <p id="changePwdTarget"></p>
+        <label class="login-field">
+            <span>Новый пароль</span>
+            <input type="password" id="newPasswordChange" placeholder="Новый пароль">
+        </label>
+        <div class="dialog-actions">
+            <button class="secondary-button" onclick="this.closest('dialog').close()">Отмена</button>
+            <button class="primary-button" id="btnConfirmChangePassword">Сменить</button>
+        </div>
+    </div>
+</dialog>
+
+<script type="module" src="../scripts/users.js"></script>
+
+</body>
+</html>

@@ -11,7 +11,9 @@ dependencies = [
     "PyYAML",
     "python-jose[cryptography]",
     "python-multipart",
-    "pydantic"
+    "pydantic",
+    "asyncpg",
+    "passlib[bcrypt]",
 ]
 
 
