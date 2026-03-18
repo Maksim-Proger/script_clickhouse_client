@@ -8,6 +8,66 @@ dg_defaults:
     Authorization: "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6InN1cGVyYWRtaW4iLCJncm91cFRhZyI6InJvb3QiLCJpYXQiOjE3NzAyMzIyMjR9.4N3Gz7y4zk53UoJ50cXYYVDT6kpQWKC82gHE7et-c34"
 
 dg_sources:
+  - name: "ozon-api"
+    schedule: 300
+    payload_data:
+      id: "2"
+      type: "shost"
+
+  - name: "ozon-vpnnetzone"
+    schedule: 300
+    payload_data:
+      id: "2"
+      type: "shost"
+
+  - name: "ozon-dns"
+    schedule: 300
+    payload_data:
+      id: "2"
+      type: "shost"
+
+  - name: "ozon-3"
+    schedule: 300
+    payload_data:
+      id: "2"
+      type: "shost"
+
+  - name: "ozon-vpnhub"
+    schedule: 300
+    payload_data:
+      id: "2"
+      type: "shost"
+
+  - name: "ozon-2"
+    schedule: 300
+    payload_data:
+      id: "2"
+      type: "shost"
+
+  - name: "ozon-web"
+    schedule: 300
+    payload_data:
+      id: "2"
+      type: "shost"
+
+  - name: "ozon"
+    schedule: 300
+    payload_data:
+      id: "2"
+      type: "shost"
+
+  - name: "ozon-mail"
+    schedule: 300
+    payload_data:
+      id: "2"
+      type: "shost"
+
+  - name: "ozon-cdn"
+    schedule: 300
+    payload_data:
+      id: "2"
+      type: "shost"
+
   - name: "ozon-4"
     schedule: 300
     payload_data:
