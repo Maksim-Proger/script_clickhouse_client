@@ -88,6 +88,10 @@ class ClickHouseService:
             f"blocked_at >= '{_safe_date(p_from)}'",
             f"blocked_at <= '{_safe_date(p_to)}'",
         ]
+
+        if filters.ip:
+            conditions.append(f"ip_address = '{_safe_ip(filters.ip)}'")
+
         where_clause = f"WHERE {' AND '.join(conditions)}"
         return (
             f"SELECT ip_address, min(blocked_at) as first_detected, source, profile "
