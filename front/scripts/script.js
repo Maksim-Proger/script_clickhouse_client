@@ -163,6 +163,7 @@ document.addEventListener("DOMContentLoaded", () => {
         try {
             const payload = {
                 name: document.getElementById("dgName").value.trim(),
+                filter_expired: document.getElementById("dgFilterExpired").checked,
                 data: {
                     id: document.getElementById("dgId").value.trim(),
                     value: document.getElementById("dgValue").value.trim(),

@@ -69,6 +69,7 @@ class DgSourceManager:
 
         profile_name = ui_params.get("name", "manual-request")
         front_data_filters = ui_params.get("data", {})
+        filter_expired = ui_params.get("filter_expired", False)
 
         final_payload = {
             "action": self.defaults.get("action", "list"),
@@ -79,7 +80,8 @@ class DgSourceManager:
         logger.info(
             "action=manual_request_start profile=%s data_keys=%s",
             profile_name,
-            list(front_data_filters.keys())
+            list(front_data_filters.keys()),
+            filter_expired
         )
 
         await self._execute(
@@ -87,7 +89,7 @@ class DgSourceManager:
             url=self.defaults.get("url"),
             headers=self.defaults.get("headers"),
             payload=final_payload,
-            filter_expired=False
+            filter_expired=filter_expired
         )
 
     async def _worker_loop(self, name: str, interval: int):
