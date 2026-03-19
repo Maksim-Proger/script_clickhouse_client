@@ -1,5 +1,9 @@
 import * as Auth from './auth.js';
 
+Auth.setSessionExpiredHandler(() => {
+    window.location.href = 'new_index.html';
+});
+
 if (!Auth.isAuthenticated()) {
     window.location.href = 'new_index.html';
 }
