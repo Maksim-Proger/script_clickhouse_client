@@ -1,11 +1,11 @@
 import * as Auth from './auth.js';
 
 Auth.setSessionExpiredHandler(() => {
-    window.location.href = 'new_index.html';
+    window.location.href = '/templates/new_index.html';
 });
 
 if (!Auth.isAuthenticated()) {
-    window.location.href = 'new_index.html';
+    window.location.href = '/templates/new_index.html';
 }
 
 const container = document.getElementById("users-list");
@@ -25,7 +25,7 @@ window.addEventListener("click", () => profileMenu.classList.add("is-hidden"));
 
 btnLogout.addEventListener("click", async () => {
     await Auth.logout();
-    window.location.href = 'new_index.html';
+    window.location.href = '/templates/new_index.html';
 });
 
 let changePwdUsername = "";
@@ -38,7 +38,7 @@ async function loadUsers() {
         renderTable(users);
     } catch (e) {
         if (e.message === "Unauthorized") {
-            window.location.href = 'new_index.html';
+            window.location.href = '/templates/new_index.html';
         } else {
             container.innerHTML = `<p style="color:red">Ошибка: ${e.message}</p>`;
         }
