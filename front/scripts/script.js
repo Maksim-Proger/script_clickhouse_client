@@ -131,10 +131,11 @@ document.addEventListener("DOMContentLoaded", () => {
             });
 
             const result = await response.json();
+            const data = result.data || [];
 
-            if (!Array.isArray(exportedData)) throw new Error("Некорректный ответ сервера");
+            if (!Array.isArray(data)) throw new Error("Некорректный ответ сервера");
 
-            renderTable(exportedData, result.page || 1, result.total_pages || 1);
+            renderTable(data, result.page || 1, result.total_pages || 1);
         } catch (e) {
             if (e.message !== "Unauthorized") {
                 container.innerHTML = `<p style='padding:20px; color:red'>Ошибка: ${e.message}</p>`;
@@ -343,7 +344,9 @@ document.addEventListener("DOMContentLoaded", () => {
                 XLSX.utils.book_append_sheet(wb, ws, "BlockedIPs");
                 XLSX.writeFile(wb, "export.xlsx");
             } else {
-                const lines = data.map(row => row.ip_address || "").filter(Boolean).join("\n");
+                const headers = Object.keys(data[0]).join("\t");
+                const rows = data.map(row => Object.values(row).map(v => v ?? "").join("\t"));
+                const lines = [headers, ...rows].join("\n");
                 const blob = new Blob([lines], { type: "text/plain" });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement("a");
