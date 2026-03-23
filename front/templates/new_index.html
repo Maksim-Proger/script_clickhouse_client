@@ -73,14 +73,67 @@
 
 <dialog id="exportDialog" class="modern-dialog">
     <div class="dialog-content">
-        <h3>Экспорт</h3>
-        <p>Выберите формат выгрузки.</p>
+        <h3>Экспорт данных</h3>
+
+        <label class="login-field">
+            <span>Дата</span>
+            <input type="date" id="exportFilterDate">
+        </label>
+
+        <hr class="menu-divider">
+
+        <label class="login-field">
+            <span>С (Дата и Время)</span>
+            <span style="display: flex; gap: 10px; align-items: center;">
+                <input type="date" id="exportFilterDateFrom" style="flex: 2;">
+                <input type="time" id="exportFilterTimeFrom" step="1" style="flex: 2;">
+                <button type="button" class="secondary-button" onclick="document.getElementById('exportFilterTimeFrom').value=''" title="Очистить время">×</button>
+            </span>
+        </label>
+
+        <label class="login-field">
+            <span>По (Дата и Время)</span>
+            <span style="display: flex; gap: 10px; align-items: center;">
+                <input type="date" id="exportFilterDateTo" style="flex: 2;">
+                <input type="time" id="exportFilterTimeTo" step="1" style="flex: 2;">
+                <button type="button" class="secondary-button" onclick="document.getElementById('exportFilterTimeTo').value=''" title="Очистить время">×</button>
+            </span>
+        </label>
+
+        <p id="exportPeriodWarning" style="color: #dc2626; font-size: 13px; margin: 0 0 10px 0; display: none;">
+            Период не может превышать 7 суток. Скорректируйте даты.
+        </p>
+
+        <hr class="menu-divider">
+
+        <label class="login-field">
+            <span>IP адрес</span>
+            <input type="text" id="exportFilterIP" placeholder="например 192.168.1.1">
+        </label>
+
+        <label class="login-field">
+            <span>Источник</span>
+            <input type="text" id="exportFilterSource" placeholder="например spamhaus">
+        </label>
+
+        <label class="login-field">
+            <span>Профиль</span>
+            <input type="text" id="exportFilterProfile" placeholder="название профиля">
+        </label>
+
+        <hr class="menu-divider">
+
         <div class="format-options" style="margin-bottom: 15px;">
             <label class="radio-option">
                 <input type="radio" name="exportFormat" value="xlsx" checked>
                 <span>XLSX (Excel)</span>
             </label>
+            <label class="radio-option">
+                <input type="radio" name="exportFormat" value="txt">
+                <span>TXT (IP-адреса построчно)</span>
+            </label>
         </div>
+
         <div class="dialog-actions">
             <button class="secondary-button" onclick="this.closest('dialog').close()">Отмена</button>
             <button class="primary-button" id="btnConfirmExport">Экспорт</button>

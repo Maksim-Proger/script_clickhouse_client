@@ -23,11 +23,37 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const IP_REGEX = /\b(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)){3}\b/;
 
-    let exportedData = [];
     let currentFilters = {};
     let currentPage = 1;
 
     Auth.setSessionExpiredHandler(showLogin);
+
+    function validateExportPeriod() {
+        const fromDate = document.getElementById("exportFilterDateFrom").value;
+        const toDate = document.getElementById("exportFilterDateTo").value;
+        const warning = document.getElementById("exportPeriodWarning");
+        const confirmBtn = document.getElementById("btnConfirmExport");
+
+        if (fromDate && toDate) {
+            const from = new Date(fromDate);
+            const to = new Date(toDate);
+            const diffDays = (to - from) / (1000 * 60 * 60 * 24);
+            if (diffDays > 7) {
+                warning.style.display = "block";
+                confirmBtn.disabled = true;
+                return false;
+            }
+        }
+        warning.style.display = "none";
+        confirmBtn.disabled = false;
+        return true;
+    }
+
+    ["exportFilterDateFrom", "exportFilterDateTo",
+     "exportFilterTimeFrom", "exportFilterTimeTo"].forEach(id => {
+        document.getElementById(id)
+            ?.addEventListener("change", validateExportPeriod);
+    });
 
     if (Auth.isAuthenticated()) {
         showApp();
@@ -105,7 +131,6 @@ document.addEventListener("DOMContentLoaded", () => {
             });
 
             const result = await response.json();
-            exportedData = result.data || [];
 
             if (!Array.isArray(exportedData)) throw new Error("Некорректный ответ сервера");
 
@@ -266,13 +291,78 @@ document.addEventListener("DOMContentLoaded", () => {
         reader.readAsArrayBuffer(file);
     }
 
-    function exportData() {
-        if (!exportedData?.length) return alert("Нет данных для экспорта. Сначала выполните запрос.");
-        const ws = XLSX.utils.json_to_sheet(exportedData);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "BlockedIPs");
-        XLSX.writeFile(wb, 'clickhouse_export.xlsx');
-        exportDialog.close();
+    async function exportData() {
+        if (!validateExportPeriod()) return;
+
+        const exactDate = document.getElementById("exportFilterDate").value || null;
+        const fromDate = document.getElementById("exportFilterDateFrom").value;
+        const fromTime = document.getElementById("exportFilterTimeFrom").value;
+        const toDate = document.getElementById("exportFilterDateTo").value;
+        const toTime = document.getElementById("exportFilterTimeTo").value;
+
+        const rangeStart = fromDate ? `${fromDate} ${fromTime || "00:00:00"}` : null;
+        const rangeEnd   = toDate   ? `${toDate} ${toTime || "23:59:59"}`    : null;
+
+        const filters = {
+            blocked_at: exactDate,
+            period: (rangeStart || rangeEnd) ? { from: rangeStart, to: rangeEnd } : null,
+            ip:      document.getElementById("exportFilterIP").value.trim()      || null,
+            source:  document.getElementById("exportFilterSource").value.trim()  || null,
+            profile: document.getElementById("exportFilterProfile").value.trim() || null,
+        };
+
+        const format = document.querySelector('input[name="exportFormat"]:checked').value;
+
+        const btnConfirmExport = document.getElementById("btnConfirmExport");
+        btnConfirmExport.disabled = true;
+        btnConfirmExport.textContent = "Загрузка...";
+
+        try {
+            const response = await Auth.authFetch(`${Auth.API_BASE}/ch/export`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(filters)
+            });
+
+            if (!response.ok) {
+                const err = await response.json();
+                throw new Error(err.detail || response.statusText);
+            }
+
+            const result = await response.json();
+            const data = result.data || [];
+
+            if (!data.length) {
+                alert("По заданным фильтрам данных не найдено.");
+                return;
+            }
+
+            if (format === "xlsx") {
+                const ws = XLSX.utils.json_to_sheet(data);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "BlockedIPs");
+                XLSX.writeFile(wb, "export.xlsx");
+            } else {
+                const lines = data.map(row => row.ip_address || "").filter(Boolean).join("\n");
+                const blob = new Blob([lines], { type: "text/plain" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = "export.txt";
+                a.click();
+                URL.revokeObjectURL(url);
+            }
+
+            exportDialog.close();
+
+        } catch (e) {
+            if (e.message !== "Unauthorized") {
+                alert(`Ошибка экспорта: ${e.message}`);
+            }
+        } finally {
+            btnConfirmExport.disabled = false;
+            btnConfirmExport.textContent = "Экспорт";
+        }
     }
 
     document.getElementById("btnCH").addEventListener("click", () => rchFilterDialog.showModal());

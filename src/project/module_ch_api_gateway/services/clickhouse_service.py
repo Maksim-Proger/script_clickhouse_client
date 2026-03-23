@@ -126,3 +126,24 @@ class ClickHouseService:
         query = ClickHouseService._build_deduplicated_query(filters)
         result = await self.client.fetch_json(query)
         return result.get("data", [])
+
+    @staticmethod
+    def _build_export_query(filters: CHReadFilters) -> str:
+        conditions = ClickHouseService._build_conditions(filters)
+        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+
+        return (
+            f"SELECT * FROM `feedgen`.`blocked_ips` {where_clause} "
+            f"ORDER BY blocked_at DESC "
+            f"LIMIT 1000000"
+        )
+
+    async def get_export_ips(self, filters: CHReadFilters) -> list:
+        try:
+            query = self._build_export_query(filters)
+            result = await self.client.fetch_json(query)
+            return result.get("data", [])
+        except Exception as e:
+            logger.error("action=ch_export_failed error=%s", str(e))
+            return []
+
