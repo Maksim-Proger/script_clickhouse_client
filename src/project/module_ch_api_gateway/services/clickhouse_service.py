@@ -143,10 +143,10 @@ class ClickHouseService:
         conditions = ClickHouseService._build_conditions(filters)
         where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
         return (
-            f"SELECT ip_address, min(blocked_at) as first_detected, source, profile "
+            f"SELECT ip_address, max(blocked_at) as last_detected, min(blocked_at) as first_detected, source, profile "
             f"FROM `feedgen`.`blocked_ips` {where_clause} "
             f"GROUP BY ip_address, source, profile "
-            f"ORDER BY first_detected DESC "
+            f"ORDER BY last_detected DESC "
             f"LIMIT 1000000"
         )
 
