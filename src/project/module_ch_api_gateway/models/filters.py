@@ -16,6 +16,7 @@ class CHReadFilters(BaseModel):
     profile: Optional[str] = None
     page: int = 1
     page_size: int = 100
+    unique_ips: bool = False
 
 
 class CHSimpleFilters(BaseModel):

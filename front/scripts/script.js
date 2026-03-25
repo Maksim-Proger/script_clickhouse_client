@@ -304,15 +304,18 @@ document.addEventListener("DOMContentLoaded", () => {
         const rangeStart = fromDate ? `${fromDate} ${fromTime || "00:00:00"}` : null;
         const rangeEnd   = toDate   ? `${toDate} ${toTime || "23:59:59"}`    : null;
 
+        const format = document.querySelector('input[name="exportFormat"]:checked').value;
+        const uniqueIPs = document.getElementById("exportUniqueIPs").checked;
+        const onlyIPField = document.getElementById("exportOnlyIPField").checked;
+
         const filters = {
             blocked_at: exactDate,
             period: (rangeStart || rangeEnd) ? { from: rangeStart, to: rangeEnd } : null,
             ip:      document.getElementById("exportFilterIP").value.trim()      || null,
             source:  document.getElementById("exportFilterSource").value.trim()  || null,
             profile: document.getElementById("exportFilterProfile").value.trim() || null,
+            unique_ips: uniqueIPs,
         };
-
-        const format = document.querySelector('input[name="exportFormat"]:checked').value;
 
         const btnConfirmExport = document.getElementById("btnConfirmExport");
         btnConfirmExport.disabled = true;
@@ -338,14 +341,18 @@ document.addEventListener("DOMContentLoaded", () => {
                 return;
             }
 
+            const exportRows = onlyIPField
+                ? data.map(row => ({ ip_address: row.ip_address }))
+                : data;
+
             if (format === "xlsx") {
-                const ws = XLSX.utils.json_to_sheet(data);
+                const ws = XLSX.utils.json_to_sheet(exportRows);
                 const wb = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(wb, ws, "BlockedIPs");
                 XLSX.writeFile(wb, "export.xlsx");
             } else {
-                const headers = Object.keys(data[0]).join("\t");
-                const rows = data.map(row => Object.values(row).map(v => v ?? "").join("\t"));
+                const headers = Object.keys(exportRows[0]).join("\t");
+                const rows = exportRows.map(row => Object.values(row).map(v => v ?? "").join("\t"));
                 const lines = [headers, ...rows].join("\n");
                 const blob = new Blob([lines], { type: "text/plain" });
                 const url = URL.createObjectURL(blob);

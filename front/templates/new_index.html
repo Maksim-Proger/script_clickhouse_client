@@ -113,7 +113,7 @@
 
         <label class="login-field">
             <span>Источник</span>
-            <input type="text" id="exportFilterSource" placeholder="например spamhaus">
+            <input type="text" id="exportFilterSource" placeholder="например ipban">
         </label>
 
         <label class="login-field">
@@ -122,6 +122,17 @@
         </label>
 
         <hr class="menu-divider">
+
+        <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 15px;">
+            <label class="radio-option">
+                <input type="checkbox" id="exportUniqueIPs">
+                <span>Только уникальные IP</span>
+            </label>
+            <label class="radio-option">
+                <input type="checkbox" id="exportOnlyIPField">
+                <span>Только поле с IP адресом</span>
+            </label>
+        </div>
 
         <div class="format-options" style="margin-bottom: 15px;">
             <label class="radio-option">

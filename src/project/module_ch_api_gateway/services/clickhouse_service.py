@@ -138,9 +138,24 @@ class ClickHouseService:
             f"LIMIT 1000000"
         )
 
+    @staticmethod
+    def _build_export_unique_query(filters: CHReadFilters) -> str:
+        conditions = ClickHouseService._build_conditions(filters)
+        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        return (
+            f"SELECT ip_address, min(blocked_at) as first_detected, source, profile "
+            f"FROM `feedgen`.`blocked_ips` {where_clause} "
+            f"GROUP BY ip_address, source, profile "
+            f"ORDER BY first_detected DESC "
+            f"LIMIT 1000000"
+        )
+
     async def get_export_ips(self, filters: CHReadFilters) -> list:
         try:
-            query = self._build_export_query(filters)
+            if filters.unique_ips:
+                query = self._build_export_unique_query(filters)
+            else:
+                query = self._build_export_query(filters)
             result = await self.client.fetch_json(query)
             return result.get("data", [])
         except Exception as e:
