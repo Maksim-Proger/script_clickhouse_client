@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Request
 
-from project.module_ch_api_gateway.api.dependencies.dependencies import get_nats_service, get_current_user
+from project.module_ch_api_gateway.api.dependencies.dependencies import get_nats_service, get_current_user, check_rate_limit
 
 router = APIRouter(tags=["Data"])
 
@@ -15,6 +15,16 @@ async def dg_request(
     await service.request_data_load(data)
     return {"status": "accepted"}
 
+@router.post("dg/pa-request")
+async def pa_dg_request(
+        request: Request,
+        service=Depends(get_nats_service),
+        user=Depends(get_current_user),
+        _=Depends(check_rate_limit)
+):
+    data = await request.json()
+    await service.request_data_load(data)
+    return {"status": "accepted"}
 
 @router.post("/data/receive")
 async def receive_data(
