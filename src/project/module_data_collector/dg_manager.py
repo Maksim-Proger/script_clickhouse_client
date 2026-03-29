@@ -45,6 +45,7 @@ class DgSourceManager:
 
         except Exception as e:
             logger.error("action=request_failed profile=%s error=%s", name, str(e))
+            raise
 
     async def run_automated(self, name: str):
         cfg = self.sources.get(name)
@@ -78,7 +79,7 @@ class DgSourceManager:
         }
 
         logger.info(
-            "action=manual_request_start profile=%s data_keys=%s",
+            "action=manual_request_start profile=%s data_keys=%s filter_expired=%s",
             profile_name,
             list(front_data_filters.keys()),
             filter_expired
@@ -94,7 +95,10 @@ class DgSourceManager:
 
     async def _worker_loop(self, name: str, interval: int):
         while not self.lifecycle.is_shutting_down:
-            await self.run_automated(name)
+            try:
+                await self.run_automated(name)
+            except Exception as e:
+                logger.error("action=worker_loop_error profile=%s error=%s", name, str(e))
             await asyncio.sleep(interval)
 
     async def start(self):

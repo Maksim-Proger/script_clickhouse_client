@@ -1,7 +1,7 @@
 dg_defaults:
   url: "https://10.25.78.105/api/inspector/marks"
   action: "list"
-  timeout: 10
+  timeout: 300
   headers:
     User-Arena: "first"
     Content-Type: "application/json"
