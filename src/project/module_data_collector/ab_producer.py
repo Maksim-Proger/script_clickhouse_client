@@ -1,7 +1,7 @@
 import asyncio
-import json
 import logging
 
+from project.module_data_collector.dg_manager import _publish_records
 from project.module_data_collector.http.src1_client import AbClient
 from project.module_data_collector.lifecycle import Lifecycle
 from project.module_data_collector.parser.parser import parse_input
@@ -30,17 +30,18 @@ class AbProducer:
                 try:
                     raw_data = await self.client.get_data()
 
-                    records = parse_input(
-                        raw_data,
-                        source="ipban",
-                        dt_format=self.dt_format
+                    loop = asyncio.get_running_loop()
+                    records = await loop.run_in_executor(
+                        None,
+                        lambda: parse_input(
+                            raw_data,
+                            source="ipban",
+                            dt_format=self.dt_format,
+                        )
                     )
 
-                    for record in records:
-                        if self.lifecycle.is_shutting_down:
-                            break
-                        # Отправляем данные из AB в NATS.
-                        await self.nc.publish("ch.write.raw", json.dumps(record).encode())
+                    if records:
+                        await _publish_records(self.nc, records, self.lifecycle)
 
                 except Exception as req_err:
                     logger.error("action=ipban_fetch_failed error=%s", str(req_err))
@@ -49,3 +50,5 @@ class AbProducer:
         finally:
             await self.client.close()
             logger.info("action=worker_stopped profile=ipban")
+
+

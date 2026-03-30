@@ -1,8 +1,9 @@
-import json
+import asyncio
 import logging
 
 from nats.aio.client import Client as NatsClient
 
+from project.module_data_collector.dg_manager import _publish_records
 from project.module_data_collector.lifecycle import Lifecycle
 from project.module_data_collector.parser.parser import parse_input
 
@@ -29,17 +30,19 @@ class NatsWebConsumer:
         try:
             logger.debug("action=web_data_received size=%d", len(msg.data))
 
-            records = parse_input(
-                data=msg.data.decode(),
-                source="web_interface",
-                dt_format=self.dt_format
+            loop = asyncio.get_running_loop()
+            records = await loop.run_in_executor(
+                None,
+                lambda: parse_input(
+                    data=msg.data.decode(),
+                    source="web_interface",
+                    dt_format=self.dt_format,
+                )
             )
 
-            for record in records:
-                await self.nc.publish(
-                    "ch.write.raw",
-                    json.dumps(record).encode()
-                )
+            if records:
+                await _publish_records(self.nc, records, self.lifecycle)
+
             await msg.ack()
 
         except Exception as e:

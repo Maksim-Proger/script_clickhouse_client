@@ -2,14 +2,28 @@ import asyncio
 import json
 import logging
 
+from project.module_data_collector.lifecycle import Lifecycle
 from project.module_data_collector.http.src2_client import DgClient
 from project.module_data_collector.parser.parser import parse_input
 
 logger = logging.getLogger("data-collector")
 
+_PUBLISH_BATCH_SIZE = 500
+
+async def _publish_records(nc, records: list, lifecycle: Lifecycle, subject: str = "ch.writer.row") -> None:
+    batch = []
+    for record in records:
+        if lifecycle.is_shutting_down:
+            break
+        batch.append(nc.publish(subject, json.dumps(record).encode()))
+        if len(batch) >= _PUBLISH_BATCH_SIZE:
+            await asyncio.gather(*batch)
+            batch.clear()
+    if batch:
+        await asyncio.gather(*batch)
 
 class DgSourceManager:
-    def __init__(self, nc, config: dict, lifecycle):
+    def __init__(self, nc, config: dict, lifecycle: Lifecycle):
         self.nc = nc
         self.lifecycle = lifecycle
 
@@ -44,22 +58,28 @@ class DgSourceManager:
             )
             raise last_error
 
-        records = parse_input(
-            raw_data,
-            source="dosgate",
-            profile=name,
-            dt_format=self.dt_format,
-            filter_expired=filter_expired
+        loop = asyncio.get_running_loop()
+        records = await loop.run_in_executor(
+            None,
+            lambda: parse_input(
+                raw_data,
+                source="dosgate",
+                profile=name,
+                dt_format=self.dt_format,
+                filter_expired=filter_expired,
+            )
         )
 
         if not records:
             logger.warning("action=parse_empty profile=%s message='No records found in response'", name)
+            return
 
-        for record in records:
-            if self.lifecycle.is_shutting_down:
-                break
-            # Отправляем нормализованные данные в ClickHouse loader через NATS
-            await self.nc.publish("ch.write.raw", json.dumps(record).encode())
+        logger.info("action=publish_start profile=%s records=%d", name, len(records))
+
+        # Отправляем нормализованные данные в ClickHouse loader через NATS
+        await _publish_records(self.nc, records, self.lifecycle)
+
+        logger.info("action=publish_done profile=%s records=%d", name, len(records))
 
     async def run_automated(self, name: str):
         cfg = self.sources.get(name)
@@ -76,7 +96,7 @@ class DgSourceManager:
             name=name,
             url=self.defaults.get("url"),
             headers=self.defaults.get("headers"),
-            payload=final_payload
+            payload=final_payload,
         )
 
     async def run_manual(self, payload_from_front: dict):
