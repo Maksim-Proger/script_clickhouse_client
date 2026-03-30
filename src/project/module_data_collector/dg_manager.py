@@ -10,7 +10,7 @@ logger = logging.getLogger("data-collector")
 
 _PUBLISH_BATCH_SIZE = 500
 
-async def _publish_records(nc, records: list, lifecycle: Lifecycle, subject: str = "ch.writer.row") -> None:
+async def _publish_records(nc, records: list, lifecycle: Lifecycle, subject: str = "ch.write.raw") -> None:
     batch = []
     for record in records:
         if lifecycle.is_shutting_down:
