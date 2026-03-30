@@ -72,7 +72,7 @@ def _parse_datetime(value: Any, dt_format: str) -> str:
 def parse_input(data: str,
                 source: str,
                 profile: str = "",
-                dt_format: str = "%Y-%m-%d %H:%M:%S",
+                dt_format: str = "%Y-%m-%dT%H:%M:%S",
                 filter_expired: bool = True) -> List[dict]:
     if not data or not data.strip():
         return []

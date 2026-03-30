@@ -29,7 +29,7 @@ class DgSourceManager:
 
         self.defaults = config.get("dg_defaults", {})
         self.sources = {src["name"]: src for src in config.get("dg_sources", [])}
-        self.dt_format = config.get("parser", {}).get("clickhouse_dt_format", "%Y-%m-%d %H:%M:%S")
+        self.dt_format = config.get("parser", {}).get("clickhouse_dt_format", "%Y-%m-%dT%H:%M:%S")
 
         dg_timeout = self.defaults.get("timeout", 10)
         self.client = DgClient(timeout=dg_timeout, verify_ssl=self.defaults.get("verify_ssl", False))
