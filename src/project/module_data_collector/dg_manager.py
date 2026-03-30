@@ -21,31 +21,45 @@ class DgSourceManager:
         self.client = DgClient(timeout=dg_timeout, verify_ssl=self.defaults.get("verify_ssl", False))
 
     async def _execute(self, name: str, url: str, headers: dict, payload: dict, filter_expired: bool = True):
-        try:
-            logger.info("action=execute_request profile=%s", name)
+        last_error = None
 
-            raw_data = await self.client.fetch_data(url, headers, payload)
+        for attempt in range(1, 4):
+            try:
+                logger.info("action=execute_request profile=%s attempt=%d", name, attempt)
+                raw_data = await self.client.fetch_data(url, headers, payload)
+                break
+            except Exception as e:
+                last_error = e
+                logger.warning(
+                    "action=request_failed profile=%s attempt=%d error=%s",
+                    name, attempt, str(e)
+                )
+                if attempt < 3:
+                    await asyncio.sleep(1)
 
-            records = parse_input(
-                raw_data,
-                source="dosgate",
-                profile=name,
-                dt_format=self.dt_format,
-                filter_expired=filter_expired
+        else:
+            logger.error(
+                "action=request_all_attempts_failed profile=%s error=%s",
+                name, str(last_error)
             )
+            raise last_error
 
-            if not records:
-                logger.warning("action=parse_empty profile=%s message='No records found in response'", name)
+        records = parse_input(
+            raw_data,
+            source="dosgate",
+            profile=name,
+            dt_format=self.dt_format,
+            filter_expired=filter_expired
+        )
 
-            for record in records:
-                if self.lifecycle.is_shutting_down:
-                    break
-                # Отправляем нормализованные данные в ClickHouse loader через NATS
-                await self.nc.publish("ch.write.raw", json.dumps(record).encode())
+        if not records:
+            logger.warning("action=parse_empty profile=%s message='No records found in response'", name)
 
-        except Exception as e:
-            logger.error("action=request_failed profile=%s error=%s", name, str(e))
-            raise
+        for record in records:
+            if self.lifecycle.is_shutting_down:
+                break
+            # Отправляем нормализованные данные в ClickHouse loader через NATS
+            await self.nc.publish("ch.write.raw", json.dumps(record).encode())
 
     async def run_automated(self, name: str):
         cfg = self.sources.get(name)

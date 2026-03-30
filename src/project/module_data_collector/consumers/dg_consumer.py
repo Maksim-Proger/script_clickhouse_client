@@ -2,6 +2,7 @@ import json
 import logging
 
 from nats.aio.client import Client as NatsClient
+from nats.js.api import ConsumerConfig, AckPolicy
 
 from project.module_data_collector.dg_manager import DgSourceManager
 from project.module_data_collector.lifecycle import Lifecycle
@@ -28,6 +29,16 @@ class NatsDgConsumer:
             await msg.nak()
             return
 
+        num_delivered = int(msg.headers.get("Nats-Num-Delivered", 1)) if msg.headers else 1
+
+        if num_delivered >= 3:
+            logger.error(
+                "action=msg_max_retries_exceeded subject=%s payload=%s",
+                self.subject, msg.data.decode()
+            )
+            await msg.ack()
+            return
+
         try:
             payload = json.loads(msg.data.decode())
             action = payload.get("action")
@@ -44,6 +55,16 @@ class NatsDgConsumer:
 
     async def start(self) -> None:
         js = self.nc.jetstream()
+
+        await js.add_consumer(
+            "DG_COMMANDS",
+            ConsumerConfig(
+                durable_name=self.durable,
+                deliver_subject=self.subject,
+                max_deliver=3,
+                ack_policy=AckPolicy.EXPLICIT,
+            )
+        )
 
         await js.subscribe(
             subject=self.subject,
