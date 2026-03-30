@@ -15,16 +15,16 @@ async def dg_request(
     await service.request_data_load(data)
     return {"status": "accepted"}
 
-@router.post("dg/pa-request")
-async def pa_dg_request(
-        request: Request,
-        service=Depends(get_nats_service),
-        user=Depends(get_current_user),
-        _=Depends(check_rate_limit)
-):
-    data = await request.json()
-    await service.request_data_load(data)
-    return {"status": "accepted"}
+# @router.post("dg/pa-request")
+# async def pa_dg_request(
+#         request: Request,
+#         service=Depends(get_nats_service),
+#         user=Depends(get_current_user),
+#         _=Depends(check_rate_limit)
+# ):
+#     data = await request.json()
+#     await service.request_data_load(data)
+#     return {"status": "accepted"}
 
 @router.post("/data/receive")
 async def receive_data(
