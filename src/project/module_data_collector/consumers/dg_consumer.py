@@ -60,7 +60,7 @@ class NatsDgConsumer:
             "DG_COMMANDS",
             ConsumerConfig(
                 durable_name=self.durable,
-                deliver_subject=self.subject,
+                filter_subject=self.subject,
                 max_deliver=3,
                 ack_policy=AckPolicy.EXPLICIT,
             )
