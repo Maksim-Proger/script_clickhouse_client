@@ -56,20 +56,14 @@ class NatsDgConsumer:
     async def start(self) -> None:
         js = self.nc.jetstream()
 
-        await js.add_consumer(
-            "DG_COMMANDS",
-            ConsumerConfig(
-                durable_name=self.durable,
-                filter_subject=self.subject,
-                max_deliver=3,
-                ack_policy=AckPolicy.EXPLICIT,
-            )
-        )
-
         await js.subscribe(
             subject=self.subject,
             durable=self.durable,
-            cb=self.handle_msg
+            cb=self.handle_msg,
+            config=ConsumerConfig(
+                ack_policy=AckPolicy.EXPLICIT,
+                max_deliver=3,
+            )
         )
 
         await self.lifecycle.shutdown_event.wait()
