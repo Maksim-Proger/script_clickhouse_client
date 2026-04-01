@@ -25,7 +25,8 @@ def _extract_records(obj: Any,
 
         for k, v in obj.items():
             if k == "l3_src" and isinstance(v, str):
-                ip_candidates.append(v)
+                if IP_REGEX.match(v):
+                    ip_candidates.append(v)
             elif isinstance(v, str):
                 ip_candidates.extend(IP_REGEX.findall(v))
 

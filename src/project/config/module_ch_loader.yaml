@@ -11,6 +11,6 @@ clickhouse:
   password: "dien9ux9aithohbec0aephu5meYee4In"
 
 batch:
-  size: 5000
-  interval_sec: 10.0
-  max_buffer_size: 50000
+  size: 25000
+  interval_sec: 5.0
+  max_buffer_size: 200000

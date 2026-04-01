@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import re
 from datetime import datetime
 
 from nats.aio.msg import Msg
@@ -9,6 +10,11 @@ from project.module_ch_loader.core.batch_buffer import BatchBuffer
 from project.module_ch_loader.infrastructure.ch_writer import ClickHouseWriter
 
 logger = logging.getLogger("ch-loader")
+
+_IPV4_REGEX = re.compile(
+    r'^(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)'
+    r'(?:\.(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)){3}$'
+)
 
 
 class NatsMessageHandler:
@@ -43,6 +49,11 @@ class NatsMessageHandler:
                 await msg.ack()
                 return
 
+            if not _IPV4_REGEX.match(ip_address):
+                logger.warning("action=invalid_ip_skipped ip=%s", ip_address)
+                await msg.ack()
+                return
+
             record = (
                 datetime.fromisoformat(blocked_at),
                 ip_address,
@@ -73,7 +84,18 @@ class NatsMessageHandler:
             try:
                 await self.writer.write(batch)
             except Exception as e:
-                logger.error("action=flush_failed error=%s", str(e))
+                error_str = str(e)
+                if "Cannot parse" in error_str or "Code: 44" in error_str:
+                    logger.error(
+                        "action=flush_failed_data_error dropped=%d error=%s",
+                        len(batch), error_str
+                    )
+                    await self.buffer.drop_written(len(batch))
+                else:
+                    logger.error(
+                        "action=flush_failed_retryable error=%s",
+                        error_str
+                    )
                 raise
             else:
                 await self.buffer.drop_written(len(batch))
