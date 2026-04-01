@@ -2,8 +2,8 @@ import asyncio
 import signal
 import logging
 
+logger = logging.getLogger("data-collector.lifecycle")
 
-logger = logging.getLogger("data-collector")
 
 class Lifecycle:
     def __init__(self):

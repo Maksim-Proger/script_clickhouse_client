@@ -9,7 +9,7 @@ from nats.aio.msg import Msg
 from project.module_ch_loader.core.batch_buffer import BatchBuffer
 from project.module_ch_loader.infrastructure.ch_writer import ClickHouseWriter
 
-logger = logging.getLogger("ch-loader")
+logger = logging.getLogger("ch-loader.handler")
 
 _IPV4_REGEX = re.compile(
     r'^(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)'

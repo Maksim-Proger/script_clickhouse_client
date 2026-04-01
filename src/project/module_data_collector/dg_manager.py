@@ -6,9 +6,10 @@ from project.module_data_collector.lifecycle import Lifecycle
 from project.module_data_collector.http.src2_client import DgClient
 from project.module_data_collector.parser.parser import parse_input
 
-logger = logging.getLogger("data-collector")
+logger = logging.getLogger("data-collector.dg_manager")
 
 _PUBLISH_BATCH_SIZE = 500
+
 
 async def _publish_records(nc, records: list, lifecycle: Lifecycle, subject: str = "ch.write.raw") -> None:
     batch = []
@@ -21,6 +22,7 @@ async def _publish_records(nc, records: list, lifecycle: Lifecycle, subject: str
             batch.clear()
     if batch:
         await asyncio.gather(*batch)
+
 
 class DgSourceManager:
     def __init__(self, nc, config: dict, lifecycle: Lifecycle):

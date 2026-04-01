@@ -7,7 +7,7 @@ from nats.js.api import ConsumerConfig, AckPolicy
 from project.module_data_collector.dg_manager import DgSourceManager
 from project.module_data_collector.lifecycle import Lifecycle
 
-logger = logging.getLogger("data-collector")
+logger = logging.getLogger("data-collector.dg_consumer")
 
 
 class NatsDgConsumer:

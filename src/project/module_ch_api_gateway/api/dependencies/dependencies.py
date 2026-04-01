@@ -7,7 +7,7 @@ from jose import jwt, JWTError, ExpiredSignatureError
 from project.module_ch_api_gateway.services.clickhouse_service import ClickHouseService
 from project.module_ch_api_gateway.services.nats_service import NatsService
 
-logger = logging.getLogger("ch-api-gateway")
+logger = logging.getLogger("ch-api-gateway.dependencies")
 
 security = HTTPBearer()
 

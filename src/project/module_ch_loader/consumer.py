@@ -9,7 +9,7 @@ from project.module_ch_loader.core.batch_buffer import BatchBuffer
 from project.module_ch_loader.core.nats_handler import NatsMessageHandler
 from project.module_ch_loader.infrastructure.ch_writer import ClickHouseWriter
 
-logger = logging.getLogger("ch-loader")
+logger = logging.getLogger("ch-loader.consumer")
 
 
 class NatsWriterConsumer:

@@ -11,7 +11,7 @@ from project.utils.logging_formatter import setup_logging
 
 
 def main(config: dict) -> None:
-    logger = setup_logging("nats-corn")
+    logger = setup_logging("data-collector")
     logger.info("action=process_start status=initializing")
 
     async def run() -> None:

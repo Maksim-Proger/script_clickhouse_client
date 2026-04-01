@@ -7,7 +7,7 @@ from project.module_data_collector.dg_manager import _publish_records
 from project.module_data_collector.lifecycle import Lifecycle
 from project.module_data_collector.parser.parser import parse_input
 
-logger = logging.getLogger("data-collector")
+logger = logging.getLogger("data-collector.web_consumer")
 
 
 class NatsWebConsumer:

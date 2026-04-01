@@ -6,7 +6,7 @@ from project.module_data_collector.http.src1_client import AbClient
 from project.module_data_collector.lifecycle import Lifecycle
 from project.module_data_collector.parser.parser import parse_input
 
-logger = logging.getLogger("data-collector")
+logger = logging.getLogger("data-collector.ab_producer")
 
 
 class AbProducer:
@@ -50,5 +50,3 @@ class AbProducer:
         finally:
             await self.client.close()
             logger.info("action=worker_stopped profile=ipban")
-
-
