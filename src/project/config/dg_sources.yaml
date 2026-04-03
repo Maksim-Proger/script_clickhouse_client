@@ -44,12 +44,6 @@ dg_sources:
       id: "2"
       type: "shost"
 
-  - name: "ozon-web"
-    schedule: 300
-    payload_data:
-      id: "2"
-      type: "shost"
-
   - name: "ozon"
     schedule: 300
     payload_data:
