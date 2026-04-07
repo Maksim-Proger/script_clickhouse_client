@@ -22,3 +22,5 @@ __pycache__/
 .idea/
 .vscode/
 
+# ===== Конфигурационные файлы =====
+src/project/config/dg_sources.yaml

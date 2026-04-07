@@ -8,6 +8,8 @@ nats:
   dg_consumer:
     subject: "dg.load.command"
     durable: "dg_consumer"
+  pa_consumer:
+    subject: "dg.pa.request"
 
 parser:
   clickhouse_dt_format: "%Y-%m-%d %H:%M:%S"

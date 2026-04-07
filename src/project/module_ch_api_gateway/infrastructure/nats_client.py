@@ -22,6 +22,19 @@ class NatsInfrastructure:
             raise RuntimeError("NATS is not connected")
         await self.js.publish(subject, json.dumps(data).encode())
 
+        async def request(self,
+                          subject: str,
+                          data: dict,
+                          timeout: float) -> dict:  # <- добавить
+            if not self.nc or not self.nc.is_connected:
+                raise RuntimeError("NATS is not connected")
+            msg = await self.nc.request(
+                subject,
+                json.dumps(data).encode(),
+                timeout=timeout,
+            )
+            return json.loads(msg.data.decode())
+
     async def close(self):
         if self.nc:
             await self.nc.close()

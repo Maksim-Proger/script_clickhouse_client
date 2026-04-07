@@ -97,7 +97,7 @@ class ClickHouseService:
             f"SELECT ip_address, min(blocked_at) as first_detected, source, profile "
             f"FROM `feedgen`.`blocked_ips` {where_clause} "
             f"GROUP BY ip_address, source, profile "
-            f"ORDER BY first_detected DESC LIMIT 500"
+            f"ORDER BY first_detected DESC LIMIT 1000000"
         )
 
     async def get_blocked_ips(self, filters: CHReadFilters):

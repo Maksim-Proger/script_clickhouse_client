@@ -1,16 +1,19 @@
 import asyncio
 from typing import Optional
+
 from nats.aio.client import Client as NatsClient
 
-from project.module_data_collector.lifecycle import Lifecycle
 from project.module_data_collector.ab_producer import AbProducer
-from project.module_data_collector.dg_manager import DgSourceManager
+from project.module_data_collector.consumers.pa_consumer import NatsPaConsumer
 from project.module_data_collector.consumers.dg_consumer import NatsDgConsumer
 from project.module_data_collector.consumers.web_consumer import NatsWebConsumer
+from project.module_data_collector.dg_manager import DgSourceManager
+from project.module_data_collector.lifecycle import Lifecycle
 from project.utils.logging_formatter import setup_logging
 
 
 def main(config: dict) -> None:
+
     logger = setup_logging("data-collector")
     logger.info("action=process_start status=initializing")
 
@@ -22,17 +25,17 @@ def main(config: dict) -> None:
         await nc.connect(config["nats"]["url"])
 
         ab = AbProducer(nc, config, lifecycle)
-
         dg_manager = DgSourceManager(nc, config, lifecycle)
         dg_consumer = NatsDgConsumer(nc, config, lifecycle, dg_manager)
-
         web = NatsWebConsumer(nc, config, lifecycle)
+        pa_consumer = NatsPaConsumer(nc, config, lifecycle, dg_manager)
 
         tasks = [
             asyncio.create_task(ab.start()),
             asyncio.create_task(dg_manager.start()),
             asyncio.create_task(dg_consumer.start()),
             asyncio.create_task(web.start()),
+            asyncio.create_task(pa_consumer.start()),
         ]
 
         await lifecycle.shutdown_event.wait()

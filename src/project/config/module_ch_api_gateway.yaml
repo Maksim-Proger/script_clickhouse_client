@@ -15,6 +15,8 @@ auth:
 nats:
   url: "nats://localhost:4222"
   dg_subject: "dg.load.command"
+  pa_subject: "dg.pa.request"
+  pa_timeout_sec: 320
 
 clickhouse:
   host: "10.81.0.136"

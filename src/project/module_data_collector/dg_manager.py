@@ -11,7 +11,10 @@ logger = logging.getLogger("data-collector.dg_manager")
 _PUBLISH_BATCH_SIZE = 500
 
 
-async def _publish_records(nc, records: list, lifecycle: Lifecycle, subject: str = "ch.write.raw") -> None:
+async def _publish_records(nc,
+                           records: list,
+                           lifecycle: Lifecycle,
+                           subject: str = "ch.write.raw") -> None:
     batch = []
     for record in records:
         if lifecycle.is_shutting_down:
@@ -25,7 +28,10 @@ async def _publish_records(nc, records: list, lifecycle: Lifecycle, subject: str
 
 
 class DgSourceManager:
-    def __init__(self, nc, config: dict, lifecycle: Lifecycle):
+    def __init__(self,
+                 nc,
+                 config: dict,
+                 lifecycle: Lifecycle):
         self.nc = nc
         self.lifecycle = lifecycle
 
@@ -36,7 +42,13 @@ class DgSourceManager:
         dg_timeout = self.defaults.get("timeout", 10)
         self.client = DgClient(timeout=dg_timeout, verify_ssl=self.defaults.get("verify_ssl", False))
 
-    async def _execute(self, name: str, url: str, headers: dict, payload: dict, filter_expired: bool = True):
+    async def _execute(self,
+                       name: str,
+                       url: str,
+                       headers: dict,
+                       payload: dict,
+                       filter_expired: bool = True) -> list[dict]:
+
         last_error = None
 
         for attempt in range(1, 4):
@@ -74,7 +86,7 @@ class DgSourceManager:
 
         if not records:
             logger.warning("action=parse_empty profile=%s message='No records found in response'", name)
-            return
+            return []
 
         logger.info("action=publish_start profile=%s records=%d", name, len(records))
 
@@ -82,6 +94,8 @@ class DgSourceManager:
         await _publish_records(self.nc, records, self.lifecycle)
 
         logger.info("action=publish_done profile=%s records=%d", name, len(records))
+
+        return records
 
     async def run_automated(self, name: str):
         cfg = self.sources.get(name)
@@ -101,7 +115,8 @@ class DgSourceManager:
             payload=final_payload,
         )
 
-    async def run_manual(self, payload_from_front: dict):
+    async def run_manual(self, payload_from_front: dict) -> list[dict]:
+
         ui_params = payload_from_front.get("params", {})
 
         profile_name = ui_params.get("name", "manual-request")
@@ -121,7 +136,7 @@ class DgSourceManager:
             filter_expired
         )
 
-        await self._execute(
+        return await self._execute(
             name=profile_name,
             url=self.defaults.get("url"),
             headers=self.defaults.get("headers"),

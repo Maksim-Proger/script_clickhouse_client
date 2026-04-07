@@ -63,4 +63,10 @@ def get_ch_service(request: Request) -> ClickHouseService:
 
 
 def get_nats_service(request: Request, config=Depends(get_config)) -> NatsService:
-    return NatsService(request.app.state.nats_infra, config["nats"]["dg_subject"])
+    nats_cfg = config["nats"]
+    return NatsService(
+        request.app.state.nats_infra,
+        config["nats"]["dg_subject"],
+        pa_subject=nats_cfg["pa_subject"],
+        pa_timeout=float(nats_cfg["pa_timeout_sec"]),
+    )
