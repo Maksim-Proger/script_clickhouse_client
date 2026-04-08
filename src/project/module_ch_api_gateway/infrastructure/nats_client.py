@@ -25,7 +25,7 @@ class NatsInfrastructure:
     async def request(self,
                       subject: str,
                       data: dict,
-                      timeout: float) -> dict:  # <- добавить
+                      timeout: float) -> dict:
         if not self.nc or not self.nc.is_connected:
             raise RuntimeError("NATS is not connected")
         msg = await self.nc.request(
