@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -5,6 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from project.module_ch_api_gateway.api.dependencies.dependencies import rate_limit_cleanup_loop
 from project.module_ch_api_gateway.api.routers import clickhouse_router, auth_router, data_router, user_router
 from project.module_ch_api_gateway.infrastructure.clickhouse_client import ClickHouseClient
 from project.module_ch_api_gateway.infrastructure.db import DatabaseManager
@@ -30,9 +32,12 @@ def create_app(config: dict) -> FastAPI:
 
         await app.state.nats_infra.connect()
         logger.info("action=nats_connect status=success")
+
+        cleanup_task = asyncio.create_task(rate_limit_cleanup_loop(app.state))
         try:
             yield
         finally:
+            cleanup_task.cancel()
             app.state.user_service.stop_cleanup_loop()
             await app.state.nats_infra.close()
             logger.info("action=nats_disconnect status=success")
@@ -44,6 +49,7 @@ def create_app(config: dict) -> FastAPI:
     app = FastAPI(lifespan=lifespan)
 
     app.state.config = config
+    app.state.rate_limit_counters = {}
 
     pg = config["postgres"]
     app.state.db = DatabaseManager(
