@@ -9,17 +9,29 @@ router = APIRouter(prefix="/ch", tags=["ClickHouse"])
 
 
 @router.post("/read")
-async def read_ch(filters: CHReadFilters = None, service=Depends(get_ch_service), user=Depends(get_current_user)):
+async def read_ch(
+        filters: CHReadFilters = None,
+        service=Depends(get_ch_service),
+        user=Depends(get_current_user)
+):
     return await service.get_blocked_ips(filters or CHReadFilters())
 
 
-@router.post("/read/simple")
-async def read_simple(filters: CHSimpleFilters, service=Depends(get_ch_service), user=Depends(get_current_user)):
-    return await service.get_simple_ips(filters)
+# @router.post("/read/simple")
+# async def read_simple(
+#         filters: CHSimpleFilters,
+#         service=Depends(get_ch_service),
+#         user=Depends(get_current_user)
+# ):
+#     return await service.get_simple_ips(filters)
 
 
 @router.post("/export")
-async def export_ch(filters: CHReadFilters = None, service=Depends(get_ch_service), user=Depends(get_current_user)):
+async def export_ch(
+        filters: CHReadFilters = None,
+        service=Depends(get_ch_service),
+        user=Depends(get_current_user)
+):
     f = filters or CHReadFilters()
 
     if f.period and f.period.from_date and f.period.to_date:

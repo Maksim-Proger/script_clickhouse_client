@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from project.module_ch_api_gateway.api.dependencies.dependencies import rate_limit_cleanup_loop
-from project.module_ch_api_gateway.api.routers import clickhouse_router, auth_router, data_router, user_router
+from project.module_ch_api_gateway.api.routers import clickhouse_router, auth_router, data_router, user_router, simple_router
 from project.module_ch_api_gateway.infrastructure.clickhouse_client import ClickHouseClient
 from project.module_ch_api_gateway.infrastructure.db import DatabaseManager
 from project.module_ch_api_gateway.infrastructure.nats_client import NatsInfrastructure
@@ -88,5 +88,6 @@ def create_app(config: dict) -> FastAPI:
     app.include_router(user_router.router)
     app.include_router(clickhouse_router.router)
     app.include_router(data_router.router)
+    app.include_router(simple_router.router)
 
     return app
