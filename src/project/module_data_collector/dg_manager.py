@@ -38,6 +38,7 @@ class DgSourceManager:
         self.defaults = config.get("dg_defaults", {})
         self.sources = {src["name"]: src for src in config.get("dg_sources", [])}
         self.dt_format = config.get("parser", {}).get("clickhouse_dt_format", "%Y-%m-%dT%H:%M:%S")
+        self.max_period_days = config.get("pa_request", {}).get("max_period_days", 7)
 
         dg_timeout = self.defaults.get("timeout", 10)
         self.client = DgClient(timeout=dg_timeout, verify_ssl=self.defaults.get("verify_ssl", False))
@@ -47,7 +48,8 @@ class DgSourceManager:
                        url: str,
                        headers: dict,
                        payload: dict,
-                       filter_expired: bool = True) -> list[dict]:
+                       filter_expired: bool = True,
+                       period: dict | None = None) -> list[dict]:
 
         last_error = None
 
@@ -81,6 +83,7 @@ class DgSourceManager:
                 profile=name,
                 dt_format=self.dt_format,
                 filter_expired=filter_expired,
+                period=period,
             )
         )
 
@@ -120,8 +123,24 @@ class DgSourceManager:
         ui_params = payload_from_front.get("params", {})
 
         profile_name = ui_params.get("name", "manual-request")
-        front_data_filters = ui_params.get("data", {})
+        front_data_filters = ui_params.get("data", {}).copy()
         filter_expired = ui_params.get("filter_expired", False)
+
+        period = front_data_filters.pop("period", None)
+
+        if period:
+            max_seconds = int(self.max_period_days * 86400)
+            period_to = int(period["to"])
+            period_from = int(period["from"])
+            min_from = period_to - max_seconds
+            if period_from < min_from:
+                logger.info(
+                    "action=period_clamped profile=%s original_from=%d clamped_from=%d",
+                    profile_name, period_from, min_from
+                )
+                period = {"from": min_from, "to": period_to}
+
+        front_data_filters["id"] = "2-255"
 
         final_payload = {
             "action": self.defaults.get("action", "list"),
@@ -130,10 +149,11 @@ class DgSourceManager:
         }
 
         logger.info(
-            "action=manual_request_start profile=%s data_keys=%s filter_expired=%s",
+            "action=manual_request_start profile=%s data_keys=%s filter_expired=%s period=%s",
             profile_name,
             list(front_data_filters.keys()),
-            filter_expired
+            filter_expired,
+            period,
         )
 
         return await self._execute(
@@ -141,7 +161,8 @@ class DgSourceManager:
             url=self.defaults.get("url"),
             headers=self.defaults.get("headers"),
             payload=final_payload,
-            filter_expired=filter_expired
+            filter_expired=filter_expired,
+            period=period,
         )
 
     async def _worker_loop(self, name: str, interval: int):

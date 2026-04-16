@@ -13,3 +13,6 @@ nats:
 
 parser:
   clickhouse_dt_format: "%Y-%m-%d %H:%M:%S"
+
+pa_request:
+  max_period_days: 7

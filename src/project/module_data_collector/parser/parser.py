@@ -9,12 +9,16 @@ IP_REGEX = re.compile(
 )
 
 
-def _extract_records(obj: Any,
-                     result: List[dict],
-                     source: str,
-                     profile: str,
-                     dt_format: str,
-                     filter_expired: bool = True) -> None:
+def _extract_records(
+    obj: Any,
+    result: List[dict],
+    source: str,
+    profile: str,
+    dt_format: str,
+    filter_expired: bool = True,
+    period: dict | None = None,
+    _now: int | None = None,
+) -> None:
     if isinstance(obj, dict):
         if filter_expired:
             expire = obj.get("expire")
@@ -37,7 +41,11 @@ def _extract_records(obj: Any,
         elif "age" in obj:
             try:
                 age_seconds = int(obj["age"])
-                dt = datetime.now(timezone.utc) - timedelta(seconds=age_seconds)
+                blocked_at_unix = _now - age_seconds
+                if period:
+                    if not (period["from"] <= blocked_at_unix <= period["to"]):
+                        return
+                dt = datetime.fromtimestamp(blocked_at_unix, tz=timezone.utc)
                 blocked_at = dt.strftime(dt_format)
             except (ValueError, TypeError):
                 blocked_at = datetime.now(timezone.utc).strftime(dt_format)
@@ -53,11 +61,11 @@ def _extract_records(obj: Any,
             })
 
         for v in obj.values():
-            _extract_records(v, result, source, profile, dt_format, filter_expired)
+            _extract_records(v, result, source, profile, dt_format, filter_expired, period, _now)
 
     elif isinstance(obj, list):
         for item in obj:
-            _extract_records(item, result, source, profile, dt_format, filter_expired)
+            _extract_records(item, result, source, profile, dt_format, filter_expired, period, _now)
 
 
 def _parse_datetime(value: Any, dt_format: str) -> str:
@@ -70,24 +78,29 @@ def _parse_datetime(value: Any, dt_format: str) -> str:
     return datetime.now(timezone.utc).strftime(dt_format)
 
 
-def parse_input(data: str,
-                source: str,
-                profile: str = "",
-                dt_format: str = "%Y-%m-%dT%H:%M:%S",
-                filter_expired: bool = True) -> List[dict]:
+def parse_input(
+    data: str,
+    source: str,
+    profile: str = "",
+    dt_format: str = "%Y-%m-%dT%H:%M:%S",
+    filter_expired: bool = True,
+    period: dict | None = None,
+) -> List[dict]:
     if not data or not data.strip():
         return []
+
+    now = int(datetime.now(timezone.utc).timestamp())
 
     records: List[dict] = []
     try:
         parsed = json.loads(data)
-        _extract_records(parsed, records, source, profile, dt_format, filter_expired)
+        _extract_records(parsed, records, source, profile, dt_format, filter_expired, period, now)
     except Exception:
-        now = datetime.now(timezone.utc).strftime(dt_format)
+        now_str = datetime.now(timezone.utc).strftime(dt_format)
         for ip in IP_REGEX.findall(data):
             records.append({
                 "ip_address": ip,
-                "blocked_at": now,
+                "blocked_at": now_str,
                 "source": source,
                 "profile": profile
             })
