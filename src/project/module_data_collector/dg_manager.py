@@ -2,9 +2,11 @@ import asyncio
 import json
 import logging
 
+from datetime import datetime, timezone
+
 from project.module_data_collector.lifecycle import Lifecycle
 from project.module_data_collector.http.src2_client import DgClient
-from project.module_data_collector.parser.parser import parse_input
+from project.module_data_collector.parser.parser import parse_input, filter_records
 
 logger = logging.getLogger("data-collector.dg_manager")
 
@@ -25,6 +27,21 @@ async def _publish_records(nc,
             batch.clear()
     if batch:
         await asyncio.gather(*batch)
+
+
+def _parse_period_to_unix(period: dict) -> dict:
+    def _to_unix(value) -> int:
+        if isinstance(value, (int, float)):
+            return int(value)
+        if isinstance(value, str):
+            dt = datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+            return int(dt.replace(tzinfo=timezone.utc).timestamp())
+        raise ValueError(f"Неподдерживаемый формат периода: {value!r}")
+
+    return {
+        "from": _to_unix(period["from"]),
+        "to": _to_unix(period["to"]),
+    }
 
 
 class DgSourceManager:
@@ -118,7 +135,7 @@ class DgSourceManager:
             payload=final_payload,
         )
 
-    async def run_manual(self, payload_from_front: dict) -> list[dict]:
+    async def run_manual(self, payload_from_front: dict):
 
         ui_params = payload_from_front.get("params", {})
 
@@ -156,7 +173,7 @@ class DgSourceManager:
             period,
         )
 
-        return await self._execute(
+        await self._execute(
             name=profile_name,
             url=self.defaults.get("url"),
             headers=self.defaults.get("headers"),
@@ -164,6 +181,56 @@ class DgSourceManager:
             filter_expired=filter_expired,
             period=period,
         )
+
+    async def run_pa(self, payload_from_simple: dict) -> list[dict]:
+        profile_name = payload_from_simple.get("name", "unknown")
+        period = payload_from_simple.get("period", None)
+        ip = payload_from_simple.get("ip", None)
+
+        if period:
+            period = _parse_period_to_unix(period)
+            max_seconds = int(self.max_period_days * 86400)
+            period_to = int(period["to"])
+            period_from = int(period["from"])
+            min_from = period_to - max_seconds
+            if period_from < min_from:
+                logger.info(
+                    "action=period_clamped profile=%s original_from=%d clamped_from=%d",
+                    profile_name, period_from, min_from
+                )
+                period = {"from": min_from, "to": period_to}
+
+        final_payload = {
+            "action": self.defaults.get("action", "list"),
+            "name": profile_name,
+            "data": {
+                "id": "2-255",
+                "type": self.defaults.get("type", "shost"),
+            },
+        }
+
+        logger.info(
+            "action=pa_request_start profile=%s period=%s ip=%s",
+            profile_name, period, ip,
+        )
+
+        all_records = await self._execute(
+            name=profile_name,
+            url=self.defaults.get("url"),
+            headers=self.defaults.get("headers"),
+            payload=final_payload,
+            filter_expired=False,
+            period=None,
+        )
+
+        filtered = filter_records(all_records, period=period, ip=ip)
+
+        logger.info(
+            "action=pa_request_done profile=%s total=%d filtered=%d",
+            profile_name, len(all_records), len(filtered),
+        )
+
+        return filtered
 
     async def _worker_loop(self, name: str, interval: int):
         while not self.lifecycle.is_shutting_down:

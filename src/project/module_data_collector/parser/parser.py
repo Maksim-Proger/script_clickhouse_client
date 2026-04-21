@@ -105,3 +105,28 @@ def parse_input(
                 "profile": profile
             })
     return records
+
+
+def _is_in_period(blocked_at: str, period: dict) -> bool:
+    try:
+        dt = datetime.strptime(blocked_at, "%Y-%m-%d %H:%M:%S")
+        blocked_at_unix = int(dt.replace(tzinfo=timezone.utc).timestamp())
+        return period["from"] <= blocked_at_unix <= period["to"]
+    except (ValueError, TypeError):
+        return False
+
+
+def filter_records(
+    records: list[dict],
+    period: dict | None = None,
+    ip: str | None = None,
+) -> list[dict]:
+    result = records
+
+    if period:
+        result = [r for r in result if _is_in_period(r["blocked_at"], period)]
+
+    if ip:
+        result = [r for r in result if r["ip_address"] == ip]
+
+    return result

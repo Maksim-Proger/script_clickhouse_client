@@ -28,12 +28,18 @@ async def read_simple(
                 "period": {
                     "from": filters.period.from_date,
                     "to": filters.period.to_date,
-                },
+                } if filters.period else None,
+                "ip": filters.ip,
             }
-            await nats_service.request_pa_data_load(payload)
+            result = await nats_service.request_pa_data_load(payload)
         except TimeoutError:
             raise HTTPException(status_code=504, detail="Источник данных не ответил вовремя")
 
         await state_service.update_timestamp(filters.profile)
+
+        if result.get("status") == "error":
+            raise HTTPException(status_code=502, detail=result.get("message", "Ошибка получения данных"))
+
+        return result.get("data", [])
 
     return await ch_service.get_simple_ips(filters)
