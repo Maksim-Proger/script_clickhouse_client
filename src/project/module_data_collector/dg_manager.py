@@ -1,11 +1,10 @@
 import asyncio
 import json
 import logging
-
 from datetime import datetime, timezone
 
-from project.module_data_collector.lifecycle import Lifecycle
 from project.module_data_collector.http.src2_client import DgClient
+from project.module_data_collector.lifecycle import Lifecycle
 from project.module_data_collector.parser.parser import parse_input, filter_records
 
 logger = logging.getLogger("data-collector.dg_manager")
@@ -157,7 +156,8 @@ class DgSourceManager:
                 )
                 period = {"from": min_from, "to": period_to}
 
-        front_data_filters["id"] = "2-255"
+        front_data_filters["type"] = self.defaults.get("type", "shost")
+        front_data_filters["value"] = self.defaults.get("value", "1")
 
         final_payload = {
             "action": self.defaults.get("action", "list"),

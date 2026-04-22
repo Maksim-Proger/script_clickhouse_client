@@ -192,8 +192,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 filter_expired: document.getElementById("dgFilterExpired").checked,
                 data: {
                     id: document.getElementById("dgId").value.trim(),
-                    value: document.getElementById("dgValue").value.trim(),
-                    type: document.getElementById("dgType").value.trim()
                 }
             };
 
