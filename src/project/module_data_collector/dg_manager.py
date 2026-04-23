@@ -129,8 +129,8 @@ class DgSourceManager:
 
         await self._execute(
             name=name,
-            url=self.defaults.get("url"),
-            headers=self.defaults.get("headers"),
+            url=self.defaults.get("url", ""),
+            headers=self.defaults.get("headers", {}),
             payload=final_payload,
         )
 
@@ -175,17 +175,17 @@ class DgSourceManager:
 
         await self._execute(
             name=profile_name,
-            url=self.defaults.get("url"),
-            headers=self.defaults.get("headers"),
+            url=self.defaults.get("url", ""),
+            headers=self.defaults.get("headers", {}),
             payload=final_payload,
             filter_expired=filter_expired,
             period=period,
         )
 
     async def run_pa(self, payload_from_simple: dict) -> list[dict]:
-        profile_name = payload_from_simple.get("name", "unknown")
-        period = payload_from_simple.get("period", None)
-        ip = payload_from_simple.get("ip", None)
+        profile_name = payload_from_simple.get("params", {}).get("name", "unknown")
+        period = payload_from_simple.get("params", {}).get("period", None)
+        ip = payload_from_simple.get("params", {}).get("ip", None)
 
         if period:
             period = _parse_period_to_unix(period)
@@ -216,8 +216,8 @@ class DgSourceManager:
 
         all_records = await self._execute(
             name=profile_name,
-            url=self.defaults.get("url"),
-            headers=self.defaults.get("headers"),
+            url=self.defaults.get("url", ""),
+            headers=self.defaults.get("headers", {}),
             payload=final_payload,
             filter_expired=False,
             period=None,

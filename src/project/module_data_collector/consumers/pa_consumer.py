@@ -23,7 +23,7 @@ class NatsPaConsumer:
             logger.info(
                 "action=pa_request_received subject=%s profile=%s",
                 self.subject,
-                payload.get("name", "unknown"),
+                payload.get("params", {}).get("name", "unknown"),
             )
 
             records = await self.dg_manager.run_pa(payload)
