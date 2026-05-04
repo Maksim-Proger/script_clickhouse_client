@@ -24,7 +24,8 @@ async def read_simple(
     if not state_service.db.is_connected:
         raise HTTPException(status_code=503, detail="БД временно недоступна")
 
-    if await state_service.should_fetch_from_source(filters.profile):
+    async def fetch_from_dg() -> list:
+
         payload = {
             "name": filters.profile,
             "period": {
@@ -45,4 +46,11 @@ async def read_simple(
 
         return result.get("data", [])
 
-    return await ch_service.get_simple_ips(filters)
+    if await state_service.should_fetch_from_source(filters.profile):
+        return await fetch_from_dg()
+
+    data = await ch_service.get_simple_ips(filters)
+    if data:
+        return data
+
+    return await fetch_from_dg()
