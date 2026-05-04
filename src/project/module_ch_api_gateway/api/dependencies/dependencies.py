@@ -8,11 +8,12 @@ from jose import jwt, JWTError, ExpiredSignatureError
 
 from project.module_ch_api_gateway.services.clickhouse_service import ClickHouseService
 from project.module_ch_api_gateway.services.nats_service import NatsService
+from project.module_ch_api_gateway.services.state_service import StateService
 
 logger = logging.getLogger("ch-api-gateway.dependencies")
 
 RATE_LIMIT_MAX = 5
-RATE_LIMIT_RATE = 5.0
+RATE_LIMIT_RATE = 0.5
 RATE_LIMIT_CLEANUP_INTERVAL = 60
 RATE_LIMIT_STALE_AFTER = 300
 
@@ -67,7 +68,7 @@ async def get_current_user(
 
 async def check_rate_limit(request: Request):
     data = await request.json()
-    profile = data.get("name")
+    profile = data.get("profile")
     if not profile:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="profile обязателен")
 
@@ -110,6 +111,10 @@ async def rate_limit_cleanup_loop(app_state):
 
 def get_ch_service(request: Request) -> ClickHouseService:
     return ClickHouseService(request.app.state.ch_client)
+
+
+def get_state_service(request: Request) -> StateService:
+    return request.app.state.state_service
 
 
 def get_nats_service(request: Request, config=Depends(get_config)) -> NatsService:
