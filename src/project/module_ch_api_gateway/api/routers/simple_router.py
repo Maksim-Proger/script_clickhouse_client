@@ -21,21 +21,24 @@ async def read_simple(
         user=Depends(get_current_user),
         _=Depends(check_rate_limit),
 ):
+    if not state_service.db.is_connected:
+        raise HTTPException(status_code=503, detail="БД временно недоступна")
+
     if await state_service.should_fetch_from_source(filters.profile):
+        payload = {
+            "name": filters.profile,
+            "period": {
+                "from": filters.period.from_date,
+                "to": filters.period.to_date,
+            } if filters.period else None,
+            "ip": filters.ip,
+        }
         try:
-            payload = {
-                "name": filters.profile,
-                "period": {
-                    "from": filters.period.from_date,
-                    "to": filters.period.to_date,
-                } if filters.period else None,
-                "ip": filters.ip,
-            }
             result = await nats_service.request_pa_data_load(payload)
         except TimeoutError:
             raise HTTPException(status_code=504, detail="Источник данных не ответил вовремя")
-
-        await state_service.update_timestamp(filters.profile)
+        finally:
+            await state_service.update_timestamp(filters.profile)
 
         if result.get("status") == "error":
             raise HTTPException(status_code=502, detail=result.get("message", "Ошибка получения данных"))

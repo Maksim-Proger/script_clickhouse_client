@@ -11,6 +11,7 @@ from project.module_ch_api_gateway.api.routers import clickhouse_router, auth_ro
 from project.module_ch_api_gateway.infrastructure.clickhouse_client import ClickHouseClient
 from project.module_ch_api_gateway.infrastructure.db import DatabaseManager
 from project.module_ch_api_gateway.infrastructure.nats_client import NatsInfrastructure
+from project.module_ch_api_gateway.services.state_service import StateService
 from project.module_ch_api_gateway.services.user_service import UserService
 
 logger = logging.getLogger("ch-api-gateway")
@@ -58,6 +59,7 @@ def create_app(config: dict) -> FastAPI:
         max_size=pg.get("max_connections", 10),
     )
     app.state.user_service = UserService(app.state.db)
+    app.state.state_service = StateService(app.state.db)
 
     app.state.ch_client = ClickHouseClient(
         host=config["clickhouse"]["host"],

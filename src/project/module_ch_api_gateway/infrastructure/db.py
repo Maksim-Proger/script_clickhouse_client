@@ -37,6 +37,13 @@ CREATE_SESSIONS_USERNAME_INDEX = """
 CREATE INDEX IF NOT EXISTS idx_sessions_username ON sessions (username);
 """
 
+CREATE_PROFILE_STATES_TABLE = """
+CREATE TABLE IF NOT EXISTS profile_states (
+    profile     VARCHAR(150) PRIMARY KEY,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+"""
+
 
 class DatabaseManager:
 
@@ -107,6 +114,7 @@ class DatabaseManager:
             await conn.execute(CREATE_SESSIONS_TABLE)
             await conn.execute(CREATE_SESSIONS_JTI_INDEX)
             await conn.execute(CREATE_SESSIONS_USERNAME_INDEX)
+            await conn.execute(CREATE_PROFILE_STATES_TABLE)
 
     async def get_user_by_username(self, username: str) -> Optional[asyncpg.Record]:
         async with self.pool.acquire() as conn:
@@ -200,3 +208,19 @@ class DatabaseManager:
             if count > 0:
                 logger.info("action=cleanup_sessions deleted=%d", count)
             return count
+
+    async def get_profile_state(self, profile: str) -> Optional[asyncpg.Record]:
+        async with self.pool.acquire() as conn:
+            return await conn.fetchrow(
+                "SELECT profile, updated_at FROM profile_states WHERE profile = $1",
+                profile,
+            )
+
+    async def upsert_profile_state(self, profile: str) -> None:
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                "INSERT INTO profile_states (profile, updated_at) "
+                "VALUES ($1, now()) "
+                "ON CONFLICT (profile) DO UPDATE SET updated_at = now()",
+                profile,
+            )
