@@ -1,3 +1,6 @@
+import logging
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from project.module_ch_api_gateway.api.dependencies.dependencies import (
@@ -8,6 +11,8 @@ from project.module_ch_api_gateway.api.dependencies.dependencies import (
     check_rate_limit,
 )
 from project.module_ch_api_gateway.models.filters import CHSimpleFilters
+
+logger = logging.getLogger("ch-api-gateway")
 
 router = APIRouter(tags=["Simple"])
 
@@ -24,33 +29,66 @@ async def read_simple(
     if not state_service.db.is_connected:
         raise HTTPException(status_code=503, detail="БД временно недоступна")
 
-    async def fetch_from_dg() -> list:
+    owner_id = str(uuid.uuid4())
 
-        payload = {
-            "name": filters.profile,
-            "period": {
-                "from": filters.period.from_date,
-                "to": filters.period.to_date,
-            } if filters.period else None,
-            "ip": filters.ip,
-        }
+    payload = {
+        "name": filters.profile,
+        "period": {
+            "from": filters.period.from_date,
+            "to": filters.period.to_date,
+        } if filters.period else None,
+        "ip": filters.ip,
+    }
+
+    claimed = await state_service.try_claim_dg_fetch(filters.profile, owner_id)
+
+    if claimed:
         try:
             result = await nats_service.request_pa_data_load(payload)
         except TimeoutError:
+            try:
+                await state_service.release_dg_claim(
+                    filters.profile, owner_id, success=False, error="timeout",
+                )
+            except Exception as release_err:
+                logger.error("action=release_claim_failed error=%s", str(release_err))
             raise HTTPException(status_code=504, detail="Источник данных не ответил вовремя")
-        finally:
-            await state_service.update_timestamp(filters.profile)
+        except Exception as e:
+            try:
+                await state_service.release_dg_claim(
+                    filters.profile, owner_id, success=False, error=str(e),
+                )
+            except Exception as release_err:
+                logger.error("action=release_claim_failed error=%s", str(release_err))
+            raise HTTPException(status_code=502, detail="Ошибка получения данных")
 
         if result.get("status") == "error":
+            try:
+                await state_service.release_dg_claim(
+                    filters.profile, owner_id, success=False, error=result.get("message"),
+                )
+            except Exception as release_err:
+                logger.error("action=release_claim_failed error=%s", str(release_err))
             raise HTTPException(status_code=502, detail=result.get("message", "Ошибка получения данных"))
+
+        try:
+            await state_service.release_dg_claim(
+                filters.profile, owner_id, success=True,
+            )
+        except Exception as release_err:
+            logger.error("action=release_claim_failed error=%s", str(release_err))
 
         return result.get("data", [])
 
-    if await state_service.should_fetch_from_source(filters.profile):
-        return await fetch_from_dg()
+    profile_status = await state_service.get_profile_status(filters.profile)
 
-    data = await ch_service.get_simple_ips(filters)
-    if data:
-        return data
+    if profile_status and profile_status["status"] == "in_progress":
+        data = await ch_service.get_simple_ips(filters)
+        if data:
+            return data
+        raise HTTPException(
+            status_code=202,
+            detail="Данные обновляются, повторите запрос через несколько секунд",
+        )
 
-    return await fetch_from_dg()
+    return await ch_service.get_simple_ips(filters)
