@@ -39,9 +39,17 @@ CREATE INDEX IF NOT EXISTS idx_sessions_username ON sessions (username);
 
 CREATE_PROFILE_STATES_TABLE = """
 CREATE TABLE IF NOT EXISTS profile_states (
-    profile     VARCHAR(150) PRIMARY KEY,
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    profile         VARCHAR(150) PRIMARY KEY,
+    status          VARCHAR(20)  NOT NULL DEFAULT 'success',
+    last_success_at TIMESTAMPTZ  NOT NULL DEFAULT (now() - interval '10 minutes'),
+    claim_until     TIMESTAMPTZ,
+    claim_owner     VARCHAR(64),
+    last_error      TEXT
 );
+"""
+
+CREATE_PROFILE_STATES_INDEX = """
+CREATE INDEX IF NOT EXISTS idx_profile_states_profile ON profile_states (profile);
 """
 
 
@@ -115,6 +123,7 @@ class DatabaseManager:
             await conn.execute(CREATE_SESSIONS_JTI_INDEX)
             await conn.execute(CREATE_SESSIONS_USERNAME_INDEX)
             await conn.execute(CREATE_PROFILE_STATES_TABLE)
+            await conn.execute(CREATE_PROFILE_STATES_INDEX)
 
     async def get_user_by_username(self, username: str) -> Optional[asyncpg.Record]:
         async with self.pool.acquire() as conn:
@@ -209,18 +218,66 @@ class DatabaseManager:
                 logger.info("action=cleanup_sessions deleted=%d", count)
             return count
 
-    async def get_profile_state(self, profile: str) -> Optional[asyncpg.Record]:
+    async def try_claim_dg_fetch(self, profile: str, owner_id: str) -> bool:
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                INSERT INTO profile_states (profile, status, last_success_at, claim_until, claim_owner)
+                VALUES ($1, 'in_progress', now() - interval '10 minutes', now() + interval '340 seconds', $2)
+                ON CONFLICT (profile) DO UPDATE
+                    SET status      = 'in_progress',
+                        claim_until = now() + interval '340 seconds',
+                        claim_owner = $2
+                    WHERE profile_states.status != 'in_progress'
+                       OR profile_states.claim_until < now()
+                RETURNING profile
+                """,
+                profile, owner_id,
+            )
+            return row is not None
+
+    async def get_profile_status(self, profile: str) -> Optional[asyncpg.Record]:
         async with self.pool.acquire() as conn:
             return await conn.fetchrow(
-                "SELECT profile, updated_at FROM profile_states WHERE profile = $1",
+                """
+                SELECT status, last_success_at, claim_until
+                FROM profile_states
+                WHERE profile = $1
+                """,
                 profile,
             )
 
-    async def upsert_profile_state(self, profile: str) -> None:
+    async def release_dg_claim(
+            self,
+            profile: str,
+            owner_id: str,
+            success: bool,
+            error: Optional[str] = None,
+    ) -> None:
         async with self.pool.acquire() as conn:
-            await conn.execute(
-                "INSERT INTO profile_states (profile, updated_at) "
-                "VALUES ($1, now()) "
-                "ON CONFLICT (profile) DO UPDATE SET updated_at = now()",
-                profile,
-            )
+            if success:
+                await conn.execute(
+                    """
+                    UPDATE profile_states
+                    SET status          = 'success',
+                        last_success_at = now(),
+                        claim_until     = NULL,
+                        claim_owner     = NULL,
+                        last_error      = NULL
+                    WHERE profile = $1 AND claim_owner = $2
+                    """,
+                    profile, owner_id,
+                )
+            else:
+                await conn.execute(
+                    """
+                    UPDATE profile_states
+                    SET status          = 'error',
+                        last_success_at = now() - interval '10 minutes',
+                        claim_until     = NULL,
+                        claim_owner     = NULL,
+                        last_error      = $3
+                    WHERE profile = $1 AND claim_owner = $2
+                    """,
+                    profile, owner_id, error,
+                )
