@@ -1,7 +1,7 @@
-import logging
 import asyncio
+import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 import asyncpg
@@ -220,21 +220,55 @@ class DatabaseManager:
 
     async def try_claim_dg_fetch(self, profile: str, owner_id: str) -> bool:
         async with self.pool.acquire() as conn:
-            row = await conn.fetchrow(
-                """
-                INSERT INTO profile_states (profile, status, last_success_at, claim_until, claim_owner)
-                VALUES ($1, 'in_progress', now() - interval '10 minutes', now() + interval '340 seconds', $2)
-                ON CONFLICT (profile) DO UPDATE
+            async with conn.transaction():
+                row = await conn.fetchrow(
+                    """
+                    SELECT status, last_success_at, claim_until
+                    FROM profile_states
+                    WHERE profile = $1
+                    FOR UPDATE
+                    """,
+                    profile,
+                )
+
+                if row is None:
+                    await conn.execute(
+                        """
+                        INSERT INTO profile_states
+                            (profile, status, last_success_at, claim_until, claim_owner)
+                        VALUES ($1, 'in_progress', now() - interval '10 minutes',
+                                now() + interval '340 seconds', $2)
+                        """,
+                        profile, owner_id,
+                    )
+                    return True
+
+                now = datetime.now(timezone.utc)
+                if (
+                        row["status"] == "in_progress"
+                        and row["claim_until"] is not None
+                        and row["claim_until"] > now
+                ):
+                    return False
+
+                if (
+                        row["status"] == "success"
+                        and row["last_success_at"] is not None
+                        and row["last_success_at"] > now - timedelta(minutes=5)
+                ):
+                    return False
+
+                await conn.execute(
+                    """
+                    UPDATE profile_states
                     SET status      = 'in_progress',
                         claim_until = now() + interval '340 seconds',
                         claim_owner = $2
-                    WHERE profile_states.status != 'in_progress'
-                       OR profile_states.claim_until < now()
-                RETURNING profile
-                """,
-                profile, owner_id,
-            )
-            return row is not None
+                    WHERE profile = $1
+                    """,
+                    profile, owner_id,
+                )
+                return True
 
     async def get_profile_status(self, profile: str) -> Optional[asyncpg.Record]:
         async with self.pool.acquire() as conn:
