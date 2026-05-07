@@ -306,11 +306,10 @@ class DatabaseManager:
                 await conn.execute(
                     """
                     UPDATE profile_states
-                    SET status          = 'error',
-                        last_success_at = now() - interval '10 minutes',
-                        claim_until     = NULL,
-                        claim_owner     = NULL,
-                        last_error      = $3
+                    SET status      = 'error',
+                        claim_until = NULL,
+                        claim_owner = NULL,
+                        last_error  = $3
                     WHERE profile = $1 AND claim_owner = $2
                     """,
                     profile, owner_id, error,
