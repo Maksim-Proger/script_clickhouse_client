@@ -41,7 +41,7 @@ CREATE_PROFILE_STATES_TABLE = """
 CREATE TABLE IF NOT EXISTS profile_states (
     profile         VARCHAR(150) PRIMARY KEY,
     status          VARCHAR(20)  NOT NULL DEFAULT 'success',
-    last_success_at TIMESTAMPTZ  NOT NULL DEFAULT (now() - interval '10 minutes'),
+    last_success_at TIMESTAMPTZ  NOT NULL DEFAULT now(),
     claim_until     TIMESTAMPTZ,
     claim_owner     VARCHAR(64),
     last_error      TEXT
@@ -232,16 +232,20 @@ class DatabaseManager:
                 )
 
                 if row is None:
-                    await conn.execute(
+                    result = await conn.fetchrow(
                         """
                         INSERT INTO profile_states
                             (profile, status, last_success_at, claim_until, claim_owner)
-                        VALUES ($1, 'in_progress', now() - interval '10 minutes',
+                        VALUES ($1, 'in_progress', now(),
                                 now() + interval '340 seconds', $2)
+                        ON CONFLICT (profile) DO NOTHING
+                        RETURNING profile
                         """,
                         profile, owner_id,
                     )
-                    return True
+                    if result is not None:
+                        return True
+                    return False
 
                 now = datetime.now(timezone.utc)
                 if (

@@ -1,5 +1,6 @@
 import logging
 import uuid
+import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -91,4 +92,15 @@ async def read_simple(
             detail="Данные обновляются, повторите запрос через несколько секунд",
         )
 
-    return await ch_service.get_simple_ips(filters)
+    data = await ch_service.get_simple_ips(filters)
+    if data:
+        return data
+
+    if profile_status and profile_status["status"] == "success":
+        for _ in range(3):
+            await asyncio.sleep(3)
+            data = await ch_service.get_simple_ips(filters)
+            if data:
+                return data
+
+    return []
