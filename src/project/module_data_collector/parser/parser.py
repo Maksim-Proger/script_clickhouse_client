@@ -1,6 +1,6 @@
 import json
 import re
-from datetime import datetime, timezone, timedelta  # Добавили timedelta
+from datetime import datetime, timezone
 from typing import Any, List
 
 IP_REGEX = re.compile(
@@ -10,14 +10,14 @@ IP_REGEX = re.compile(
 
 
 def _extract_records(
-    obj: Any,
-    result: List[dict],
-    source: str,
-    profile: str,
-    dt_format: str,
-    filter_expired: bool = True,
-    period: dict | None = None,
-    _now: int | None = None,
+        obj: Any,
+        result: List[dict],
+        source: str,
+        profile: str,
+        dt_format: str,
+        filter_expired: bool = True,
+        period: dict | None = None,
+        _now: int | None = None,
 ) -> None:
     if isinstance(obj, dict):
         if filter_expired:
@@ -68,6 +68,24 @@ def _extract_records(
             _extract_records(item, result, source, profile, dt_format, filter_expired, period, _now)
 
 
+def deduplicate_records(records: list[dict]) -> list[dict]:
+    seen: dict[tuple, dict] = {}
+    for r in records:
+        key = (r["ip_address"], r["source"], r["profile"])
+        if key not in seen or r["blocked_at"] < seen[key]["blocked_at"]:
+            seen[key] = r
+
+    return [
+        {
+            "ip_address": r["ip_address"],
+            "first_detected": r["blocked_at"],
+            "source": r["source"],
+            "profile": r["profile"],
+        }
+        for r in seen.values()
+    ]
+
+
 def _parse_datetime(value: Any, dt_format: str) -> str:
     if isinstance(value, str):
         for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%Y-%m-%dT%H:%M:%S"):
@@ -79,12 +97,12 @@ def _parse_datetime(value: Any, dt_format: str) -> str:
 
 
 def parse_input(
-    data: str,
-    source: str,
-    profile: str = "",
-    dt_format: str = "%Y-%m-%dT%H:%M:%S",
-    filter_expired: bool = True,
-    period: dict | None = None,
+        data: str,
+        source: str,
+        profile: str = "",
+        dt_format: str = "%Y-%m-%dT%H:%M:%S",
+        filter_expired: bool = True,
+        period: dict | None = None,
 ) -> List[dict]:
     if not data or not data.strip():
         return []
@@ -117,9 +135,9 @@ def _is_in_period(blocked_at: str, period: dict) -> bool:
 
 
 def filter_records(
-    records: list[dict],
-    period: dict | None = None,
-    ip: str | None = None,
+        records: list[dict],
+        period: dict | None = None,
+        ip: str | None = None,
 ) -> list[dict]:
     result = records
 

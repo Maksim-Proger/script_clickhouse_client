@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 from project.module_data_collector.http.src2_client import DgClient
 from project.module_data_collector.lifecycle import Lifecycle
-from project.module_data_collector.parser.parser import parse_input, filter_records
+from project.module_data_collector.parser.parser import parse_input, filter_records, deduplicate_records
 
 logger = logging.getLogger("data-collector.dg_manager")
 
@@ -224,13 +224,14 @@ class DgSourceManager:
         )
 
         filtered = filter_records(all_records, period=period, ip=ip)
+        deduplicated = deduplicate_records(filtered)
 
         logger.info(
-            "action=pa_request_done profile=%s total=%d filtered=%d",
-            profile_name, len(all_records), len(filtered),
+            "action=pa_request_done profile=%s total=%d filtered=%d deduplicated=%d",
+            profile_name, len(all_records), len(filtered), len(deduplicated),
         )
 
-        return filtered
+        return deduplicated
 
     async def _worker_loop(self, name: str, interval: int):
         while not self.lifecycle.is_shutting_down:
