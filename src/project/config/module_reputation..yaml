@@ -1,0 +1,10 @@
+clickhouse:
+  host: "10.81.0.136"
+  port: 9000
+  database: "feedgen"
+  user: "feedgen"
+  password: "dien9ux9aithohbec0aephu5meYee4In"
+
+job:
+  interval_hours: 6.0
+
