@@ -34,3 +34,7 @@ postgres:
   min_connections: 2
   max_connections: 10
 
+geoip:
+  country_db_path: "/opt/geoip/GeoLite2-Country.mmdb"
+  asn_db_path:     "/opt/geoip/GeoLite2-ASN.mmdb"
+

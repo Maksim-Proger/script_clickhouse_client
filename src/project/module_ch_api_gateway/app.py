@@ -13,6 +13,8 @@ from project.module_ch_api_gateway.infrastructure.db import DatabaseManager
 from project.module_ch_api_gateway.infrastructure.nats_client import NatsInfrastructure
 from project.module_ch_api_gateway.services.state_service import StateService
 from project.module_ch_api_gateway.services.user_service import UserService
+from project.module_ch_api_gateway.infrastructure.geoip_client import GeoIPClient
+from project.module_ch_api_gateway.api.routers import reputation_router
 
 logger = logging.getLogger("ch-api-gateway")
 
@@ -43,9 +45,9 @@ def create_app(config: dict) -> FastAPI:
             await app.state.nats_infra.close()
             logger.info("action=nats_disconnect status=success")
             await app.state.db.close()
-
             await app.state.ch_client.close()
             logger.info("action=ch_client_close status=success")
+            app.state.geoip_client.close()
 
     app = FastAPI(lifespan=lifespan)
 
@@ -68,6 +70,13 @@ def create_app(config: dict) -> FastAPI:
         user=config["clickhouse"].get("user", "default"),
         password=config["clickhouse"].get("password", ""),
     )
+
+    app.state.geoip_client = GeoIPClient(
+        country_db_path=config["geoip"]["country_db_path"],
+        asn_db_path=config["geoip"]["asn_db_path"],
+    )
+    app.state.geoip_client.open()
+
     app.state.nats_infra = NatsInfrastructure(url=config["nats"]["url"])
 
     app.add_middleware(
@@ -91,5 +100,6 @@ def create_app(config: dict) -> FastAPI:
     app.include_router(clickhouse_router.router)
     app.include_router(data_router.router)
     app.include_router(simple_router.router)
+    app.include_router(reputation_router.router)
 
     return app

@@ -14,6 +14,7 @@ dependencies = [
     "pydantic",
     "asyncpg",
     "passlib[bcrypt]",
+    "geoip2",
 ]
 
 
@@ -21,4 +22,5 @@ dependencies = [
 run-all = "project.launcher:main"
 module_data_collector = "project.module_data_collector.main:main"
 module_ch_api_gateway = "project.module_ch_api_gateway.main:main"
-module_ch_loader      = "project.module_ch_loader.main:main"
+module_ch_loader = "project.module_ch_loader.main:main"
+module_reputation = "project.module_reputation.main:main"
