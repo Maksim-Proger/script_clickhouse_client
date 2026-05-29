@@ -42,4 +42,3 @@ def main(config: dict) -> None:
         logger.info("action=process_stop status=clean")
 
     asyncio.run(run())
-

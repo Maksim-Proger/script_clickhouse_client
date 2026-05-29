@@ -15,8 +15,8 @@ def get_reputation_service(request: Request) -> ReputationService:
 
 @router.post("/reputation")
 async def get_reputation(
-    service: ReputationService = Depends(get_reputation_service),
-    user=Depends(get_current_user),
+        service: ReputationService = Depends(get_reputation_service),
+        user=Depends(get_current_user),
 ):
     data = await service.get_reputation()
     return {"data": data, "total": len(data)}

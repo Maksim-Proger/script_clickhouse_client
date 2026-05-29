@@ -3,6 +3,7 @@ from typing import Optional
 
 import geoip2.database
 import geoip2.errors
+import maxminddb
 
 logger = logging.getLogger(__name__)
 
@@ -12,11 +13,11 @@ class GeoIPClient:
         self._country_db_path = country_db_path
         self._asn_db_path = asn_db_path
         self._country_reader: Optional[geoip2.database.Reader] = None
-        self._asn_reader: Optional[geoip2.database.Reader] = None
+        self._asn_reader: Optional[maxminddb.Reader] = None
 
     def open(self) -> None:
         self._country_reader = geoip2.database.Reader(self._country_db_path)
-        self._asn_reader = geoip2.database.Reader(self._asn_db_path)
+        self._asn_reader = maxminddb.open_database(self._asn_db_path)
         logger.info("action=geoip_open status=success")
 
     def close(self) -> None:
@@ -40,10 +41,11 @@ class GeoIPClient:
 
         if self._asn_reader:
             try:
-                r = self._asn_reader.asn(ip)
-                asn_number = r.autonomous_system_number
-                asn_org = r.autonomous_system_organization
-            except (geoip2.errors.AddressNotFoundError, Exception):
+                raw = self._asn_reader.get(ip)
+                if raw:
+                    asn_number = raw.get("autonomous_system_number")
+                    asn_org = raw.get("autonomous_system_organization")
+            except Exception:
                 pass
 
         return {
