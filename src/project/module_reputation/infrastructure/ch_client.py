@@ -110,8 +110,8 @@ WITH
             first_seen,
             last_seen
         FROM by_ip AS b
-        INNER JOIN m5 USING ip_address
-        INNER JOIN mh USING ip_address
+        INNER JOIN m5 ON b.ip_address = m5.ip_address
+        INNER JOIN mh ON b.ip_address = mh.ip_address
     )
 
 SELECT
@@ -197,4 +197,3 @@ class ReputationCHClient:
             self._client.disconnect()
             self._client = None
             logger.info("action=ch_client_close status=ok")
-
