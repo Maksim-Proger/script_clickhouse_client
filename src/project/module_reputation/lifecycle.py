@@ -24,4 +24,3 @@ class Lifecycle:
             return
         self.is_shutting_down = True
         self.shutdown_event.set()
-

@@ -3,32 +3,33 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Reads the single latest snapshot by (computed_at, run_id) as recommended by tech lead.
-# The subquery is fast: ORDER BY computed_at DESC LIMIT 1 hits the partition sort key.
 _READ_LAST_SNAPSHOT_SQL = """
-SELECT
-    ip_address,
-    score,
-    risk_level,
-    events_count,
-    max_5m_events,
-    max_hour_events,
-    active_5m_windows,
-    active_hours,
-    active_days,
-    sources_count,
-    first_seen,
-    last_seen,
-    computed_at
-FROM feedgen.ip_reputation_snapshots
-WHERE (computed_at, run_id) = (
-    SELECT computed_at, run_id
-    FROM feedgen.ip_reputation_snapshots
-    ORDER BY computed_at DESC, run_id DESC
-    LIMIT 1
+                          SELECT ip_address,
+                                 score,
+                                 risk_level,
+                                 events_count,
+                                 max_5m_events,
+                                 max_hour_events,
+                                 active_5m_windows,
+                                 active_hours,
+                                 active_days,
+                                 sources_count,
+                                 first_seen,
+                                 last_seen,
+                                 computed_at
+                          FROM feedgen.ip_reputation_snapshots
+                          WHERE (computed_at, run_id) = (SELECT computed_at, run_id
+                                                         FROM feedgen.ip_reputation_snapshots
+                                                         ORDER BY computed_at DESC, run_id DESC
+                              LIMIT 1
+                              )
+                          ORDER BY score DESC \
+                          """
+
+_INT_FIELDS = (
+    "events_count", "max_5m_events", "max_hour_events",
+    "active_5m_windows", "active_hours", "active_days", "sources_count",
 )
-ORDER BY score DESC
-"""
 
 
 class ReputationService:
@@ -46,6 +47,11 @@ class ReputationService:
 
         if not records:
             return []
+
+        for record in records:
+            for field in _INT_FIELDS:
+                if field in record and record[field] is not None:
+                    record[field] = int(record[field])
 
         enriched = await asyncio.to_thread(self.geoip_client.enrich_batch, records)
 
