@@ -4,47 +4,7 @@ from typing import Optional
 
 from clickhouse_driver import Client as CHClient
 
-logger = logging.getLogger(__name__)
-
-_CREATE_TABLE_DDL = """
-                    CREATE TABLE IF NOT EXISTS feedgen.ip_reputation_snapshots
-                    (
-                        run_id
-                        String,
-                        computed_at
-                        DateTime,
-                        ip_address
-                        IPv4,
-                        score
-                        Float32,
-                        risk_level
-                        LowCardinality
-                    (
-                        String
-                    ),
-                        events_count UInt64,
-                        max_5m_events UInt64,
-                        max_hour_events UInt64,
-                        active_5m_windows UInt64,
-                        active_hours UInt64,
-                        active_days UInt64,
-                        sources_count UInt8,
-                        first_seen DateTime,
-                        last_seen DateTime
-                        )
-                        ENGINE = MergeTree
-                        PARTITION BY toDate
-                    (
-                        computed_at
-                    )
-                        ORDER BY
-                    (
-                        run_id,
-                        score,
-                        ip_address
-                    )
-                        TTL computed_at + INTERVAL 14 DAY \
-                    """
+logger = logging.getLogger("reputation.ch_client")
 
 _SCORING_SQL = """
                WITH now() AS ts_now, concat('iprep_', toString(toUnixTimestamp(ts_now))) AS reputation_run_id, base AS (
@@ -145,10 +105,6 @@ class ReputationCHClient:
             )
         return self._client
 
-    def _ensure_table_sync(self) -> None:
-        self._get_client().execute(_CREATE_TABLE_DDL)
-        logger.info("action=ensure_table status=ok table=ip_reputation_snapshots")
-
     def _run_snapshot_sync(self) -> int:
         client = self._get_client()
 
@@ -163,9 +119,6 @@ class ReputationCHClient:
         client.execute(_INSERT_SQL, rows)
         logger.info("action=snapshot_insert_done rows=%d", len(rows))
         return len(rows)
-
-    async def ensure_table(self) -> None:
-        await asyncio.to_thread(self._ensure_table_sync)
 
     async def run_snapshot(self) -> int:
         return await asyncio.to_thread(self._run_snapshot_sync)

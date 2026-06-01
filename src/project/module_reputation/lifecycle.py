@@ -2,7 +2,7 @@ import asyncio
 import logging
 import signal
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("reputation.lifecycle")
 
 
 class Lifecycle:

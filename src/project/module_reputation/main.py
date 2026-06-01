@@ -1,16 +1,12 @@
 import asyncio
-import logging
 
 from project.module_reputation.core.reputation_job import ReputationJob
 from project.module_reputation.infrastructure.ch_client import ReputationCHClient
 from project.module_reputation.lifecycle import Lifecycle
 from project.utils.logging_formatter import setup_logging
 
-logger: logging.Logger
-
 
 def main(config: dict) -> None:
-    global logger
     logger = setup_logging("reputation")
     logger.info("action=process_start status=initializing")
 
@@ -19,12 +15,6 @@ def main(config: dict) -> None:
         lifecycle.install_signal_handlers()
 
         client = ReputationCHClient(config["clickhouse"])
-
-        try:
-            await client.ensure_table()
-        except Exception as e:
-            logger.error("action=ensure_table_failed error=%s — continuing anyway", str(e))
-
         job = ReputationJob(
             client=client,
             interval_hours=config["job"]["interval_hours"],
