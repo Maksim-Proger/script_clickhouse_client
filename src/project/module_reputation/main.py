@@ -7,7 +7,6 @@ from project.utils.logging_formatter import setup_logging
 
 
 def main(config: dict) -> None:
-    global logger
     logger = setup_logging("reputation")
     logger.info("action=process_start status=initializing")
 
