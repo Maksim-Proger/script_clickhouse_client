@@ -1,7 +1,7 @@
 import asyncio
 import logging
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("ch-api-gateway.reputation")
 
 _READ_LAST_SNAPSHOT_SQL = """
                           SELECT ip_address,

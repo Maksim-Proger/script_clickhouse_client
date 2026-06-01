@@ -5,7 +5,7 @@ import geoip2.database
 import geoip2.errors
 import maxminddb
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("ch-api-gateway.geoip_client")
 
 
 class GeoIPClient:
