@@ -19,12 +19,6 @@ def main(config: dict) -> None:
         lifecycle.install_signal_handlers()
 
         client = ReputationCHClient(config["clickhouse"])
-
-        try:
-            await client.ensure_table()
-        except Exception as e:
-            logger.error("action=ensure_table_failed error=%s — continuing anyway", str(e))
-
         job = ReputationJob(
             client=client,
             interval_hours=config["job"]["interval_hours"],
