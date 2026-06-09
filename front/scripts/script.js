@@ -1,14 +1,11 @@
 import * as Auth from './auth.js';
+import { initProfilePanel, refreshCurrentUser } from './app_shell.js';
 
 document.addEventListener("DOMContentLoaded", () => {
 
     const loginForm = document.querySelector(".login-form");
     const loginPage = document.querySelector(".login-page");
     const appRoot = document.querySelector(".app");
-    const profileBtn = document.getElementById("profileBtn");
-    const profileMenu = document.getElementById("profileMenu");
-    const btnLogout = document.getElementById("btnLogout");
-    const currentUserSpan = document.getElementById("currentUser");
     const dgFilterDialog = document.getElementById("dgFilterDialog");
     const btnApplyDGFilters = document.getElementById("btnApplyDGFilters");
     const uploadDialog = document.getElementById("uploadDialog");
@@ -64,7 +61,7 @@ document.addEventListener("DOMContentLoaded", () => {
     function showApp() {
         loginPage.classList.add("is-hidden");
         appRoot.classList.remove("is-hidden");
-        currentUserSpan.textContent = Auth.getCurrentLogin();
+        refreshCurrentUser();
     }
 
     async function showLogin() {
@@ -72,6 +69,8 @@ document.addEventListener("DOMContentLoaded", () => {
         loginPage.classList.remove("is-hidden");
         await Auth.logout();
     }
+
+    initProfilePanel({ onLogout: showLogin });
 
     loginForm.addEventListener("submit", async (e) => {
         e.preventDefault();
@@ -90,14 +89,6 @@ document.addEventListener("DOMContentLoaded", () => {
             alert("Сервер недоступен");
         }
     });
-
-    btnLogout.addEventListener("click", showLogin);
-
-    profileBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        profileMenu.classList.toggle("is-hidden");
-    });
-    window.addEventListener("click", () => profileMenu.classList.add("is-hidden"));
 
     async function requestCH(page = 1) {
         try {
