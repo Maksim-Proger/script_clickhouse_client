@@ -1,32 +1,20 @@
 import * as Auth from './auth.js';
+import { requireAuthOrRedirect, initProfilePanel } from './app_shell.js';
 
-Auth.setSessionExpiredHandler(() => {
-    window.location.href = '/templates/new_index.html';
+const LOGIN_PAGE = '/templates/new_index.html';
+
+Auth.setSessionExpiredHandler(() => window.location.replace(LOGIN_PAGE));
+requireAuthOrRedirect();
+
+initProfilePanel({
+    onLogout: async () => {
+        await Auth.logout();
+        window.location.replace(LOGIN_PAGE);
+    },
 });
-
-if (!Auth.isAuthenticated()) {
-    window.location.href = '/templates/new_index.html';
-}
 
 const container = document.getElementById("users-list");
-const currentUserSpan = document.getElementById("currentUser");
-const profileBtn = document.getElementById("profileBtn");
-const profileMenu = document.getElementById("profileMenu");
-const btnLogout = document.getElementById("btnLogout");
 const changePasswordDialog = document.getElementById("changePasswordDialog");
-
-currentUserSpan.textContent = Auth.getCurrentLogin();
-
-profileBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    profileMenu.classList.toggle("is-hidden");
-});
-window.addEventListener("click", () => profileMenu.classList.add("is-hidden"));
-
-btnLogout.addEventListener("click", async () => {
-    await Auth.logout();
-    window.location.href = '/templates/new_index.html';
-});
 
 let changePwdUsername = "";
 
@@ -38,9 +26,9 @@ async function loadUsers() {
         renderTable(users);
     } catch (e) {
         if (e.message === "Unauthorized") {
-            window.location.href = '/templates/new_index.html';
+            window.location.replace(LOGIN_PAGE);
         } else {
-            container.innerHTML = `<p style="color:red">Ошибка: ${e.message}</p>`;
+            container.innerHTML = `<p style="color:var(--color-danger)">Ошибка: ${e.message}</p>`;
         }
     }
 }
@@ -56,25 +44,26 @@ function renderTable(users) {
     </tr></thead><tbody>`;
 
     users.forEach(u => {
-        const statusText = u.is_active ? "Активен" : "Деактивирован";
-        const statusColor = u.is_active ? "#16a34a" : "#dc2626";
+        const badge = u.is_active
+            ? `<span class="badge badge--active">Активен</span>`
+            : `<span class="badge badge--inactive">Деактивирован</span>`;
         const date = u.created_at.split(".")[0].replace("T", " ");
+
+        let actions = "";
+        if (u.is_active) {
+            actions = `
+                <button class="btn btn--secondary btn--small" onclick="window.openChangePassword('${u.username}')">Пароль</button>
+                <button class="btn btn--danger btn--small" onclick="window.deactivateUser('${u.username}')">Деактивировать</button>
+            `;
+        }
 
         html += `<tr>
             <td>${u.id}</td>
             <td>${u.username}</td>
-            <td style="color:${statusColor}; font-weight:600">${statusText}</td>
+            <td>${badge}</td>
             <td>${date}</td>
-            <td>`;
-
-        if (u.is_active) {
-            html += `<button class="secondary-button" style="padding:5px 10px; font-size:12px; margin-right:5px"
-                        onclick="window.openChangePassword('${u.username}')">Пароль</button>`;
-            html += `<button class="secondary-button" style="padding:5px 10px; font-size:12px; background:#fee2e2; color:#dc2626"
-                        onclick="window.deactivateUser('${u.username}')">Деактивировать</button>`;
-        }
-
-        html += `</td></tr>`;
+            <td>${actions}</td>
+        </tr>`;
     });
 
     html += "</tbody></table>";

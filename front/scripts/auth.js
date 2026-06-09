@@ -4,8 +4,28 @@ let accessToken = localStorage.getItem("token") || null;
 let currentLogin = localStorage.getItem("login") || "User";
 let sessionExpiredCallback = () => console.warn("Session expired handler not set");
 
+function isTokenExpired(token) {
+    if (!token) return true;
+    try {
+        const parts = token.split('.');
+        if (parts.length !== 3) return true;
+        const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+        const payload = JSON.parse(atob(b64));
+        return !payload.exp || payload.exp * 1000 < Date.now();
+    } catch {
+        return true;
+    }
+}
+
 export function isAuthenticated() {
-    return !!accessToken;
+    if (isTokenExpired(accessToken)) {
+        accessToken = null;
+        currentLogin = "User";
+        localStorage.removeItem("token");
+        localStorage.removeItem("login");
+        return false;
+    }
+    return true;
 }
 
 export function getCurrentLogin() {

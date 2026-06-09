@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Пользователи — Servicepipe</title>
+    <title>Репутация IP — Servicepipe</title>
     <link rel="icon" type="image/svg+xml" href="../style/logo/logo_sign.svg">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -49,42 +49,18 @@
         </div>
 
         <button class="action" onclick="window.location.href='/templates/new_index.html'">Назад</button>
-
-        <hr class="menu-divider">
-
-        <h4 class="section-title">Новый пользователь</h4>
-        <label class="login-field">
-            <span>Логин</span>
-            <input type="text" id="newUsername" placeholder="Логин">
-        </label>
-        <label class="login-field">
-            <span>Пароль</span>
-            <input type="password" id="newPassword" placeholder="Пароль">
-        </label>
-        <button class="btn btn--primary" id="btnCreateUser" style="margin-top: 12px;">Создать</button>
     </div>
 
     <div class="content">
-        <div class="data-screen">
-            <div id="users-list" style="padding: 20px;">Загрузка...</div>
+        <div class="page-header">
+            <h2 class="page-header__title">Репутация IP</h2>
+            <span class="page-header__meta" id="snapshotMeta">Загрузка...</span>
+        </div>
+        <div class="data-screen data-screen--with-header">
+            <div id="reputation-list" style="padding: 20px;">Загрузка...</div>
         </div>
     </div>
 </div>
-
-<dialog id="changePasswordDialog" class="modern-dialog">
-    <div class="dialog-content">
-        <h3>Сменить пароль</h3>
-        <p id="changePwdTarget"></p>
-        <label class="login-field">
-            <span>Новый пароль</span>
-            <input type="password" id="newPasswordChange" placeholder="Новый пароль">
-        </label>
-        <div class="dialog-actions">
-            <button class="secondary-button" onclick="this.closest('dialog').close()">Отмена</button>
-            <button class="primary-button" id="btnConfirmChangePassword">Сменить</button>
-        </div>
-    </div>
-</dialog>
 
 <dialog id="changeMyPasswordDialog" class="modern-dialog">
     <div class="dialog-content">
@@ -111,7 +87,7 @@
     </div>
 </dialog>
 
-<script type="module" src="../scripts/users.js"></script>
+<script type="module" src="../scripts/reputation.js"></script>
 
 </body>
 </html>
