@@ -15,6 +15,7 @@ dependencies = [
     "asyncpg",
     "passlib[bcrypt]",
     "geoip2",
+    "ijson",
 ]
 
 

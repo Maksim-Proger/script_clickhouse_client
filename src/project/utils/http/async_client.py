@@ -1,6 +1,27 @@
-from typing import Optional
+from typing import AsyncContextManager, Optional
 
 import httpx
+
+
+class HttpxAsyncReader:
+    def __init__(self, response: httpx.Response, chunk_size: int = 64 * 1024):
+        self._iterator = response.aiter_bytes(chunk_size=chunk_size)
+        self._buffer = bytearray()
+        self.bytes_read = 0
+
+    async def read(self, n: int) -> bytes:
+        if n == 0:
+            return b""
+        while len(self._buffer) < n:
+            try:
+                chunk = await self._iterator.__anext__()
+            except StopAsyncIteration:
+                break
+            self._buffer.extend(chunk)
+        result = bytes(self._buffer[:n])
+        del self._buffer[:n]
+        self.bytes_read += len(result)
+        return result
 
 
 class BaseAsyncHttpClient:
@@ -41,3 +62,15 @@ class BaseAsyncHttpClient:
         resp = await self._client.post(url, headers=headers, json=data)
         resp.raise_for_status()
         return resp.text
+
+    def post_stream(
+            self,
+            url: str,
+            headers: dict | None = None,
+            data: dict | None = None,
+    ) -> AsyncContextManager[httpx.Response]:
+
+        if not self._client:
+            raise RuntimeError("HTTP client is not connected")
+
+        return self._client.stream("POST", url, headers=headers, json=data)
