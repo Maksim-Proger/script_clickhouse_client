@@ -5,11 +5,13 @@ from datetime import datetime, timezone
 
 from project.module_data_collector.http.src2_client import DgClient
 from project.module_data_collector.lifecycle import Lifecycle
-from project.module_data_collector.parser.parser import parse_input, filter_records, deduplicate_records
+from project.module_data_collector.parser.parser import stream_extract_records, _is_in_period
+from project.utils.http.async_client import HttpxAsyncReader
 
 logger = logging.getLogger("data-collector.dg_manager")
 
 _PUBLISH_BATCH_SIZE = 500
+_PA_REPLY_LIMIT = 1_000_000
 
 
 async def _publish_records(nc,
@@ -59,30 +61,37 @@ class DgSourceManager:
         dg_timeout = self.defaults.get("timeout", 10)
         self.client = DgClient(timeout=dg_timeout, verify_ssl=self.defaults.get("verify_ssl", False))
 
-    async def _execute(self,
-                       name: str,
-                       url: str,
-                       headers: dict,
-                       payload: dict,
-                       filter_expired: bool = True,
-                       period: dict | None = None) -> list[dict]:
+    async def _stream_and_process(self,
+                                  name: str,
+                                  url: str,
+                                  headers: dict,
+                                  payload: dict,
+                                  filter_expired: bool = True,
+                                  period: dict | None = None,
+                                  on_record=None) -> dict:
 
         last_error = None
+        response_cm = None
+        response = None
 
         for attempt in range(1, 4):
             try:
                 logger.info("action=execute_request profile=%s attempt=%d", name, attempt)
-                raw_data = await self.client.fetch_data(url, headers, payload)
+                response_cm = self.client.stream_fetch_data(url, headers, payload)
+                response = await response_cm.__aenter__()
+                response.raise_for_status()
                 break
             except Exception as e:
                 last_error = e
+                if response_cm is not None:
+                    await response_cm.__aexit__(type(e), e, e.__traceback__)
+                    response_cm = None
                 logger.warning(
                     "action=request_failed profile=%s attempt=%d error=%s",
                     name, attempt, str(e)
                 )
                 if attempt < 3:
                     await asyncio.sleep(1)
-
         else:
             logger.error(
                 "action=request_all_attempts_failed profile=%s error=%s",
@@ -90,31 +99,65 @@ class DgSourceManager:
             )
             raise last_error
 
-        loop = asyncio.get_running_loop()
-        records = await loop.run_in_executor(
-            None,
-            lambda: parse_input(
-                raw_data,
-                source="dosgate",
-                profile=name,
-                dt_format=self.dt_format,
-                filter_expired=filter_expired,
-                period=period,
+        content_length = response.headers.get("content-length", "unknown")
+        logger.info("action=stream_start profile=%s content_length=%s", name, content_length)
+
+        stats: dict = {}
+        records_found = 0
+        batches_sent = 0
+        batch = []
+
+        try:
+            reader = HttpxAsyncReader(response)
+            async for record in stream_extract_records(
+                    reader,
+                    source="dosgate",
+                    profile=name,
+                    dt_format=self.dt_format,
+                    filter_expired=filter_expired,
+                    period=period,
+                    stats=stats,
+            ):
+                if self.lifecycle.is_shutting_down:
+                    break
+
+                records_found += 1
+                batch.append(self.nc.publish("ch.write.raw", json.dumps(record).encode()))
+
+                if on_record is not None:
+                    on_record(record)
+
+                if len(batch) >= _PUBLISH_BATCH_SIZE:
+                    await asyncio.gather(*batch)
+                    batch.clear()
+                    batches_sent += 1
+
+            if batch:
+                await asyncio.gather(*batch)
+                batches_sent += 1
+        finally:
+            await response_cm.__aexit__(None, None, None)
+
+        objects_read = stats.get("objects_read", 0)
+
+        if objects_read == 0 and content_length not in ("0", "unknown"):
+            logger.warning(
+                "action=unexpected_response_shape profile=%s content_length=%s "
+                "message='no objects found under marks - dg response shape may have changed'",
+                name, content_length,
             )
+
+        logger.info(
+            "action=stream_done profile=%s content_length=%s objects_read=%d records_found=%d batches_sent=%d",
+            name, content_length, objects_read, records_found, batches_sent,
         )
 
-        if not records:
-            logger.warning("action=parse_empty profile=%s message='No records found in response'", name)
-            return []
-
-        logger.info("action=publish_start profile=%s records=%d", name, len(records))
-
-        # Отправляем нормализованные данные в ClickHouse loader через NATS
-        await _publish_records(self.nc, records, self.lifecycle)
-
-        logger.info("action=publish_done profile=%s records=%d", name, len(records))
-
-        return records
+        return {
+            "content_length": content_length,
+            "objects_read": objects_read,
+            "records_found": records_found,
+            "batches_sent": batches_sent,
+        }
 
     async def run_automated(self, name: str):
         cfg = self.sources.get(name)
@@ -127,7 +170,7 @@ class DgSourceManager:
             "data": cfg.get("payload_data", {})
         }
 
-        await self._execute(
+        await self._stream_and_process(
             name=name,
             url=self.defaults.get("url", ""),
             headers=self.defaults.get("headers", {}),
@@ -173,7 +216,7 @@ class DgSourceManager:
             period,
         )
 
-        await self._execute(
+        await self._stream_and_process(
             name=profile_name,
             url=self.defaults.get("url", ""),
             headers=self.defaults.get("headers", {}),
@@ -214,24 +257,53 @@ class DgSourceManager:
             profile_name, period, ip,
         )
 
-        all_records = await self._execute(
+        dedup: dict[tuple, dict] = {}
+        capped = False
+
+        def _on_record(record: dict) -> None:
+            nonlocal capped
+
+            if period and not _is_in_period(record["blocked_at"], period):
+                return
+            if ip and record["ip_address"] != ip:
+                return
+
+            key = (record["ip_address"], record["source"], record["profile"])
+            existing = dedup.get(key)
+            if existing is not None:
+                if record["blocked_at"] < existing["first_detected"]:
+                    existing["first_detected"] = record["blocked_at"]
+                return
+
+            if len(dedup) >= _PA_REPLY_LIMIT:
+                capped = True
+                return
+
+            dedup[key] = {
+                "ip_address": record["ip_address"],
+                "first_detected": record["blocked_at"],
+                "source": record["source"],
+                "profile": record["profile"],
+            }
+
+        stats = await self._stream_and_process(
             name=profile_name,
             url=self.defaults.get("url", ""),
             headers=self.defaults.get("headers", {}),
             payload=final_payload,
             filter_expired=False,
             period=None,
+            on_record=_on_record,
         )
-
-        filtered = filter_records(all_records, period=period, ip=ip)
-        deduplicated = deduplicate_records(filtered)
 
         logger.info(
-            "action=pa_request_done profile=%s total=%d filtered=%d deduplicated=%d",
-            profile_name, len(all_records), len(filtered), len(deduplicated),
+            "action=pa_request_done profile=%s content_length=%s objects_read=%d records_found=%d "
+            "reply_count=%d capped=%s",
+            profile_name, stats["content_length"], stats["objects_read"], stats["records_found"],
+            len(dedup), capped,
         )
 
-        return deduplicated
+        return list(dedup.values())
 
     async def _worker_loop(self, name: str, interval: int):
         while not self.lifecycle.is_shutting_down:

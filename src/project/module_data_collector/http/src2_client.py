@@ -1,3 +1,6 @@
+import httpx
+
+from typing import AsyncContextManager
 from project.utils.http.async_client import BaseAsyncHttpClient
 
 
@@ -7,3 +10,11 @@ class DgClient(BaseAsyncHttpClient):
 
     async def fetch_data(self, url: str, headers: dict, payload: dict) -> str:
         return await self.post(url, headers=headers, data=payload)
+
+    def stream_fetch_data(
+            self,
+            url: str,
+            headers: dict,
+            payload: dict,
+    ) -> AsyncContextManager[httpx.Response]:
+        return self.post_stream(url, headers=headers, data=payload)

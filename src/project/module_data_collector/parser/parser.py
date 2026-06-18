@@ -1,7 +1,8 @@
 import json
 import re
+import ijson
 from datetime import datetime, timezone
-from typing import Any, List
+from typing import Any, AsyncIterator, List
 
 IP_REGEX = re.compile(
     r'\b(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)'
@@ -68,22 +69,45 @@ def _extract_records(
             _extract_records(item, result, source, profile, dt_format, filter_expired, period, _now)
 
 
-def deduplicate_records(records: list[dict]) -> list[dict]:
-    seen: dict[tuple, dict] = {}
-    for r in records:
-        key = (r["ip_address"], r["source"], r["profile"])
-        if key not in seen or r["blocked_at"] < seen[key]["blocked_at"]:
-            seen[key] = r
+async def stream_extract_records(
+        reader: Any,
+        source: str,
+        profile: str,
+        dt_format: str,
+        filter_expired: bool = True,
+        period: dict | None = None,
+        _now: int | None = None,
+        stats: dict | None = None,
+) -> AsyncIterator[dict]:
 
-    return [
-        {
-            "ip_address": r["ip_address"],
-            "first_detected": r["blocked_at"],
-            "source": r["source"],
-            "profile": r["profile"],
-        }
-        for r in seen.values()
-    ]
+    now = _now if _now is not None else int(datetime.now(timezone.utc).timestamp())
+
+    async for mark in ijson.items_async(reader, "marks.item"):
+        if stats is not None:
+            stats["objects_read"] = stats.get("objects_read", 0) + 1
+
+        result: List[dict] = []
+        _extract_records(mark, result, source, profile, dt_format, filter_expired, period, now)
+        for record in result:
+            yield record
+
+
+# def deduplicate_records(records: list[dict]) -> list[dict]:
+#     seen: dict[tuple, dict] = {}
+#     for r in records:
+#         key = (r["ip_address"], r["source"], r["profile"])
+#         if key not in seen or r["blocked_at"] < seen[key]["blocked_at"]:
+#             seen[key] = r
+#
+#     return [
+#         {
+#             "ip_address": r["ip_address"],
+#             "first_detected": r["blocked_at"],
+#             "source": r["source"],
+#             "profile": r["profile"],
+#         }
+#         for r in seen.values()
+#     ]
 
 
 def _parse_datetime(value: Any, dt_format: str) -> str:
@@ -134,17 +158,17 @@ def _is_in_period(blocked_at: str, period: dict) -> bool:
         return False
 
 
-def filter_records(
-        records: list[dict],
-        period: dict | None = None,
-        ip: str | None = None,
-) -> list[dict]:
-    result = records
-
-    if period:
-        result = [r for r in result if _is_in_period(r["blocked_at"], period)]
-
-    if ip:
-        result = [r for r in result if r["ip_address"] == ip]
-
-    return result
+# def filter_records(
+#         records: list[dict],
+#         period: dict | None = None,
+#         ip: str | None = None,
+# ) -> list[dict]:
+#     result = records
+#
+#     if period:
+#         result = [r for r in result if _is_in_period(r["blocked_at"], period)]
+#
+#     if ip:
+#         result = [r for r in result if r["ip_address"] == ip]
+#
+#     return result
