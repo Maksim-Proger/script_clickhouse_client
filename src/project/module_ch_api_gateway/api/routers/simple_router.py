@@ -79,7 +79,10 @@ async def read_simple(
         except Exception as release_err:
             logger.error("action=release_claim_failed error=%s", str(release_err))
 
-        return result.get("data", [])
+        data = result.get("data", [])
+        if not data:
+            data = await ch_service.get_simple_ips(filters)
+        return data
 
     profile_status = await state_service.get_profile_status(filters.profile)
 
