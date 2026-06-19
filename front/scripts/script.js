@@ -383,4 +383,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
     document.getElementById("btnExport").addEventListener("click", () => exportDialog.showModal());
     btnConfirmExport.addEventListener("click", exportData);
+
+    document.querySelectorAll('input[name="uploadFormat"]').forEach(radio => {
+        radio.addEventListener("change", () => {
+            fileInput.value = "";
+            fileInput.accept = radio.value === "xlsx" ? ".xlsx" : ".txt";
+        });
+    });
 });
