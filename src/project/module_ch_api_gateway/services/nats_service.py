@@ -19,5 +19,10 @@ class NatsService:
         payload = {"action": "load", "params": params}
         return await self.infra.request(self.pa_subject, payload, timeout=self.pa_timeout)
 
-    async def publish_external_data(self, data: dict):
-        await self.infra.publish("data.received", data)
+    async def publish_external_data(self, data, batch_size: int = 5000):
+        if isinstance(data, list):
+            for i in range(0, len(data), batch_size):
+                chunk = data[i:i + batch_size]
+                await self.infra.publish("data.received", chunk)
+        else:
+            await self.infra.publish("data.received", data)
