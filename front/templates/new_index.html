@@ -87,9 +87,20 @@
 <dialog id="uploadDialog" class="modern-dialog">
     <div class="dialog-content">
         <h3>Загрузка файла</h3>
-        <p>Выберите XLSX файл для импорта.</p>
+
+        <div class="format-options" style="margin-bottom: 15px;">
+            <label class="radio-option">
+                <input type="radio" name="uploadFormat" value="xlsx" checked>
+                <span>XLSX (Excel)</span>
+            </label>
+            <label class="radio-option">
+                <input type="radio" name="uploadFormat" value="txt">
+                <span>TXT (IP-адреса)</span>
+            </label>
+        </div>
+
         <div class="file-upload-wrapper">
-            <input type="file" id="fileInput" accept=".xlsx, .txt">
+            <input type="file" id="fileInput" accept=".xlsx">
         </div>
         <div class="dialog-actions">
             <button class="secondary-button" onclick="this.closest('dialog').close()">Отмена</button>
