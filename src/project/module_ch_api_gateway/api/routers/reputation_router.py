@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Request
 
 from project.module_ch_api_gateway.api.dependencies.dependencies import get_current_user
+from project.module_ch_api_gateway.models.filters import ReputationFilters
 from project.module_ch_api_gateway.services.reputation_service import ReputationService
 
 router = APIRouter(prefix="/ch", tags=["Reputation"])
@@ -15,8 +16,10 @@ def get_reputation_service(request: Request) -> ReputationService:
 
 @router.post("/reputation")
 async def get_reputation(
+        filters: ReputationFilters = None,
         service: ReputationService = Depends(get_reputation_service),
         user=Depends(get_current_user),
 ):
-    data = await service.get_reputation()
-    return {"data": data, "total": len(data)}
+    f = filters or ReputationFilters()
+    return await service.get_reputation(page=f.page, page_size=f.page_size)
+

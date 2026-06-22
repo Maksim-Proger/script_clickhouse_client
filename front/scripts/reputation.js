@@ -15,21 +15,23 @@ initProfilePanel({
 
 const container = document.getElementById("reputation-list");
 const snapshotMeta = document.getElementById("snapshotMeta");
+const paginationContainer = document.getElementById("pagination-container");
 
-async function fetchReputation() {
+const PAGE_SIZE = 100;
+let currentPage = 1;
+
+async function fetchReputation(page) {
     const response = await Auth.authFetch(`${Auth.API_BASE}/ch/reputation`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({})
+        body: JSON.stringify({ page, page_size: PAGE_SIZE })
     });
     if (!response.ok) {
         const err = await response.json().catch(() => ({}));
         throw new Error(err.detail || `HTTP ${response.status}`);
     }
-    const result = await response.json();
-    return Array.isArray(result) ? result : (result.data || []);
+    return await response.json();
 }
-
 
 function formatDate(s) {
     if (!s) return "—";
@@ -93,7 +95,9 @@ function renderDetails(row) {
     return `<div class="details-grid">${cells}</div>`;
 }
 
-function renderTable(data) {
+function renderTable(data, page, totalPages) {
+    paginationContainer.innerHTML = "";
+
     if (!data || !data.length) {
         container.innerHTML = "<p style='padding:20px'>Данные отсутствуют</p>";
         return;
@@ -135,17 +139,43 @@ function renderTable(data) {
             details.classList.toggle("is-hidden");
         });
     });
+
+    if (totalPages > 1) {
+        const pag = document.createElement("div");
+        pag.className = "pagination";
+        pag.innerHTML = `
+            <button id="btnPrevPage" ${page <= 1 ? 'disabled' : ''}>← Назад</button>
+            <span>Страница ${page} из ${totalPages}</span>
+            <button id="btnNextPage" ${page >= totalPages ? 'disabled' : ''}>Вперёд →</button>
+        `;
+        paginationContainer.appendChild(pag);
+
+        paginationContainer.querySelector("#btnPrevPage")
+            ?.addEventListener("click", () => { if (page > 1) goToPage(page - 1); });
+        paginationContainer.querySelector("#btnNextPage")
+            ?.addEventListener("click", () => { if (page < totalPages) goToPage(page + 1); });
+    }
+}
+
+async function goToPage(page) {
+    currentPage = page;
+    const dataScreen = document.querySelector('.data-screen');
+    if (dataScreen) dataScreen.scrollTop = 0;
+    await load();
 }
 
 async function load() {
     try {
-        const data = await fetchReputation();
+        container.innerHTML = "<p style='padding:20px'>Загрузка...</p>";
+        const result = await fetchReputation(currentPage);
+        const data = result.data || [];
+
         if (data.length && data[0].computed_at) {
             snapshotMeta.textContent = `Снапшот от ${formatDate(data[0].computed_at)}`;
         } else {
             snapshotMeta.textContent = "";
         }
-        renderTable(data);
+        renderTable(data, result.page || 1, result.total_pages || 1);
     } catch (e) {
         if (e.message === "Unauthorized") return;
         container.innerHTML = `<p style='padding:20px; color:var(--color-danger)'>Ошибка: ${e.message}</p>`;
