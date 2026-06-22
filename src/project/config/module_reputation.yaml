@@ -10,4 +10,6 @@ clickhouse:
 
 job:
   interval_hours: 6.0
+  retry_attempts: 3
+  retry_delay_seconds: 60
 
