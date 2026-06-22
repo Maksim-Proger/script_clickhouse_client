@@ -1,5 +1,8 @@
 clickhouse:
   host: "10.81.0.136"
+  write_hosts:
+    - "10.25.78.163"
+    - "10.25.78.164"
   port: 9000
   database: "feedgen"
   user: "feedgen"
@@ -7,4 +10,6 @@ clickhouse:
 
 job:
   interval_hours: 6.0
+  retry_attempts: 3
+  retry_delay_seconds: 60
 

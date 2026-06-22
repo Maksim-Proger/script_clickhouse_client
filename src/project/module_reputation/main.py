@@ -19,6 +19,8 @@ def main(config: dict) -> None:
             client=client,
             interval_hours=config["job"]["interval_hours"],
             lifecycle=lifecycle,
+            retry_attempts=config["job"]["retry_attempts"],
+            retry_delay_seconds=config["job"]["retry_delay_seconds"],
         )
 
         task = asyncio.create_task(job.run())
