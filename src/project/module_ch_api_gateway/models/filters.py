@@ -23,3 +23,9 @@ class CHSimpleFilters(BaseModel):
     profile: str
     period: PeriodFilter
     ip: Optional[str] = None
+
+class ReputationFilters(BaseModel):
+    page: int = 1
+    page_size: int = 100
+
+    
