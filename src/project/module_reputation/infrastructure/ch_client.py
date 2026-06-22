@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import random
 from typing import Optional
 
 from clickhouse_driver import Client as CHClient
@@ -80,7 +81,7 @@ _SCORING_SQL = """
                """
 
 _INSERT_SQL = """
-              INSERT INTO feedgen.ip_reputation_snapshots
+              INSERT INTO feedgen.ip_reputation_snapshots_data
               (run_id, computed_at, ip_address, score, risk_level,
                events_count, max_5m_events, max_hour_events,
                active_5m_windows, active_hours, active_days,
@@ -105,18 +106,36 @@ class ReputationCHClient:
             )
         return self._client
 
+    def _create_write_client(self) -> CHClient:
+        write_hosts = self._cfg["write_hosts"]
+        chosen_host = random.choice(write_hosts)
+        logger.info("action=write_client_init target_write_host=%s", chosen_host)
+        return CHClient(
+            host=chosen_host,
+            port=self._cfg["port"],
+            database=self._cfg["database"],
+            user=self._cfg["user"],
+            password=self._cfg["password"],
+        )
+
     def _run_snapshot_sync(self) -> int:
-        client = self._get_client()
+        read_client = self._get_client()
 
         logger.info("action=scoring_query_start")
-        rows = client.execute(_SCORING_SQL)
+        rows = read_client.execute(_SCORING_SQL)
 
         if not rows:
             logger.warning("action=scoring_empty message='Query returned 0 candidates'")
             return 0
 
         logger.info("action=scoring_query_done candidates=%d", len(rows))
-        client.execute(_INSERT_SQL, rows)
+
+        write_client = self._create_write_client()
+        try:
+            write_client.execute(_INSERT_SQL, rows)
+        finally:
+            write_client.disconnect()
+
         logger.info("action=snapshot_insert_done rows=%d", len(rows))
         return len(rows)
 
