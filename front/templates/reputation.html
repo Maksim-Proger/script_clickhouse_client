@@ -8,6 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../style/style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.5/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -54,7 +55,11 @@
     <div class="content">
         <div class="page-header">
             <h2 class="page-header__title">Репутация IP</h2>
-            <span class="page-header__meta" id="snapshotMeta">Загрузка...</span>
+            <div class="page-header__actions">
+                <span class="page-header__meta" id="snapshotMeta">Загрузка...</span>
+                <button class="header-action" id="btnRepFilter">Фильтры</button>
+                <button class="header-action is-hidden" id="btnRepExport">Экспорт</button>
+            </div>
         </div>
         <div class="data-screen data-screen--with-header">
             <div id="reputation-list" style="padding: 20px;">Загрузка...</div>
@@ -62,6 +67,85 @@
         </div>
     </div>
 </div>
+
+<dialog id="reputationFilterDialog" class="modern-dialog">
+    <div class="dialog-content">
+        <h3>Фильтры репутации</h3>
+
+        <label class="login-field">
+            <span>Score (от / до)</span>
+            <span style="display: flex; gap: 10px; align-items: center;">
+                <input type="number" id="repScoreFrom" min="0" max="100" step="0.1" placeholder="от" style="flex: 1;">
+                <input type="number" id="repScoreTo" min="0" max="100" step="0.1" placeholder="до" style="flex: 1;">
+            </span>
+        </label>
+
+        <hr class="menu-divider">
+
+        <label class="login-field">
+            <span>IP / подсеть</span>
+            <input type="text" id="repIp" placeholder="например 45.144.48.0/24 или 1.2.3.4">
+        </label>
+
+        <hr class="menu-divider">
+
+        <label class="login-field">
+            <span>ASN (через запятую)</span>
+            <input type="text" id="repAsn" placeholder="например 207651, 24940">
+        </label>
+        <label class="radio-option" style="margin-bottom: 10px;">
+            <input type="checkbox" id="repAsnExclude">
+            <span>Исключить указанные ASN</span>
+        </label>
+
+        <hr class="menu-divider">
+
+        <label class="login-field">
+            <span>Страны, ISO (через запятую)</span>
+            <input type="text" id="repCountry" placeholder="например RU, DE, NL">
+        </label>
+        <label class="radio-option" style="margin-bottom: 10px;">
+            <input type="checkbox" id="repCountryExclude">
+            <span>Исключить указанные страны</span>
+        </label>
+
+        <div class="dialog-actions" style="margin-top: 15px;">
+            <button class="secondary-button" id="btnResetRepFilters">Сбросить</button>
+            <button class="secondary-button" onclick="this.closest('dialog').close()">Отмена</button>
+            <button class="primary-button" id="btnApplyRepFilters">Применить</button>
+        </div>
+    </div>
+</dialog>
+
+<dialog id="reputationExportDialog" class="modern-dialog">
+    <div class="dialog-content">
+        <h3>Экспорт репутации</h3>
+        <p>Экспортируется текущая выборка — с применёнными фильтрами или весь последний снапшот, если фильтров нет.</p>
+
+        <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 15px;">
+            <label class="radio-option">
+                <input type="checkbox" id="repExportOnlyIP">
+                <span>Только поле с IP адресом</span>
+            </label>
+        </div>
+
+        <div class="format-options" style="margin-bottom: 15px;">
+            <label class="radio-option">
+                <input type="radio" name="repExportFormat" value="xlsx" checked>
+                <span>XLSX (Excel)</span>
+            </label>
+            <label class="radio-option">
+                <input type="radio" name="repExportFormat" value="txt">
+                <span>TXT (построчно)</span>
+            </label>
+        </div>
+
+        <div class="dialog-actions">
+            <button class="secondary-button" onclick="this.closest('dialog').close()">Отмена</button>
+            <button class="primary-button" id="btnConfirmRepExport">Экспорт</button>
+        </div>
+    </div>
+</dialog>
 
 <dialog id="changeMyPasswordDialog" class="modern-dialog">
     <div class="dialog-content">
