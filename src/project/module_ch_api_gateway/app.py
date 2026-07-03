@@ -15,6 +15,7 @@ from project.module_ch_api_gateway.services.state_service import StateService
 from project.module_ch_api_gateway.services.user_service import UserService
 from project.module_ch_api_gateway.infrastructure.geoip_client import GeoIPClient
 from project.module_ch_api_gateway.api.routers import reputation_router
+from project.module_ch_api_gateway.services.search_session import session_cleanup_loop
 
 logger = logging.getLogger("ch-api-gateway")
 
@@ -37,10 +38,12 @@ def create_app(config: dict) -> FastAPI:
         logger.info("action=nats_connect status=success")
 
         cleanup_task = asyncio.create_task(rate_limit_cleanup_loop(app.state))
+        session_cleanup_task = asyncio.create_task(session_cleanup_loop())
         try:
             yield
         finally:
             cleanup_task.cancel()
+            session_cleanup_task.cancel()
             app.state.user_service.stop_cleanup_loop()
             await app.state.nats_infra.close()
             logger.info("action=nats_disconnect status=success")

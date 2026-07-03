@@ -2,6 +2,7 @@ import * as Auth from './auth.js';
 import { requireAuthOrRedirect, initProfilePanel } from './app_shell.js';
 
 const LOGIN_PAGE = '/templates/new_index.html';
+const PAGE_SIZE = 100;
 
 Auth.setSessionExpiredHandler(() => window.location.replace(LOGIN_PAGE));
 requireAuthOrRedirect();
@@ -17,20 +18,91 @@ const container = document.getElementById("reputation-list");
 const snapshotMeta = document.getElementById("snapshotMeta");
 const paginationContainer = document.getElementById("pagination-container");
 
-const PAGE_SIZE = 100;
-let currentPage = 1;
+const btnRepFilter = document.getElementById("btnRepFilter");
+const btnRepExport = document.getElementById("btnRepExport");
+const reputationFilterDialog = document.getElementById("reputationFilterDialog");
+const reputationExportDialog = document.getElementById("reputationExportDialog");
 
-async function fetchReputation(page) {
-    const response = await Auth.authFetch(`${Auth.API_BASE}/ch/reputation`, {
+const repScoreFrom = document.getElementById("repScoreFrom");
+const repScoreTo = document.getElementById("repScoreTo");
+const repIp = document.getElementById("repIp");
+const repAsn = document.getElementById("repAsn");
+const repAsnExclude = document.getElementById("repAsnExclude");
+const repCountry = document.getElementById("repCountry");
+const repCountryExclude = document.getElementById("repCountryExclude");
+
+let currentFilters = {};
+let currentPage = 1;
+let currentSearchId = null;
+
+function parseList(value) {
+    return value.split(",").map(s => s.trim()).filter(Boolean);
+}
+
+function collectFilters() {
+    const f = {};
+
+    if (repScoreFrom.value !== "") f.score_from = parseFloat(repScoreFrom.value);
+    if (repScoreTo.value !== "") f.score_to = parseFloat(repScoreTo.value);
+
+    const ip = repIp.value.trim();
+    if (ip) f.ip = ip;
+
+    const asn = parseList(repAsn.value).map(Number).filter(Number.isFinite);
+    if (asn.length) {
+        f.asn = asn;
+        f.asn_exclude = repAsnExclude.checked;
+    }
+
+    const country = parseList(repCountry.value).map(c => c.toUpperCase());
+    if (country.length) {
+        f.country = country;
+        f.country_exclude = repCountryExclude.checked;
+    }
+
+    return f;
+}
+
+function resetFilterFields() {
+    [repScoreFrom, repScoreTo, repIp, repAsn, repCountry].forEach(el => { el.value = ""; });
+    repAsnExclude.checked = false;
+    repCountryExclude.checked = false;
+}
+
+function updateFilterActive() {
+    btnRepFilter.classList.toggle("is-active", Object.keys(currentFilters).length > 0);
+}
+
+function postReputation(body) {
+    return Auth.authFetch(`${Auth.API_BASE}/ch/reputation`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ page, page_size: PAGE_SIZE })
+        body: JSON.stringify(body)
     });
+}
+
+async function fetchPage(page) {
+    let response;
+    if (currentSearchId) {
+        response = await postReputation({ search_id: currentSearchId, page, page_size: PAGE_SIZE });
+        if (response.status === 410) {
+            currentSearchId = null;
+            response = await postReputation({ ...currentFilters, page, page_size: PAGE_SIZE });
+        }
+    } else {
+        response = await postReputation({ ...currentFilters, page, page_size: PAGE_SIZE });
+    }
+
     if (!response.ok) {
         const err = await response.json().catch(() => ({}));
         throw new Error(err.detail || `HTTP ${response.status}`);
     }
-    return await response.json();
+
+    const result = await response.json();
+    if (Array.isArray(result)) {
+        return { data: result, total: result.length, page: 1, total_pages: 1 };
+    }
+    return result;
 }
 
 function formatDate(s) {
@@ -95,9 +167,7 @@ function renderDetails(row) {
     return `<div class="details-grid">${cells}</div>`;
 }
 
-function renderTable(data, page, totalPages) {
-    paginationContainer.innerHTML = "";
-
+function renderTable(data) {
     if (!data || !data.length) {
         container.innerHTML = "<p style='padding:20px'>Данные отсутствуют</p>";
         return;
@@ -139,48 +209,149 @@ function renderTable(data, page, totalPages) {
             details.classList.toggle("is-hidden");
         });
     });
-
-    if (totalPages > 1) {
-        const pag = document.createElement("div");
-        pag.className = "pagination";
-        pag.innerHTML = `
-            <button id="btnPrevPage" ${page <= 1 ? 'disabled' : ''}>← Назад</button>
-            <span>Страница ${page} из ${totalPages}</span>
-            <button id="btnNextPage" ${page >= totalPages ? 'disabled' : ''}>Вперёд →</button>
-        `;
-        paginationContainer.appendChild(pag);
-
-        paginationContainer.querySelector("#btnPrevPage")
-            ?.addEventListener("click", () => { if (page > 1) goToPage(page - 1); });
-        paginationContainer.querySelector("#btnNextPage")
-            ?.addEventListener("click", () => { if (page < totalPages) goToPage(page + 1); });
-    }
 }
 
-async function goToPage(page) {
-    currentPage = page;
+function renderPagination(page, totalPages) {
+    paginationContainer.innerHTML = "";
+    if (totalPages <= 1) return;
+
+    const pag = document.createElement("div");
+    pag.className = "pagination";
+    pag.innerHTML = `
+        <button id="btnPrevPage" ${page <= 1 ? 'disabled' : ''}>← Назад</button>
+        <span>Страница ${page} из ${totalPages}</span>
+        <button id="btnNextPage" ${page >= totalPages ? 'disabled' : ''}>Вперёд →</button>
+    `;
+    paginationContainer.appendChild(pag);
+
+    pag.querySelector("#btnPrevPage")
+        ?.addEventListener("click", () => { if (page > 1) goToPage(page - 1); });
+    pag.querySelector("#btnNextPage")
+        ?.addEventListener("click", () => { if (page < totalPages) goToPage(page + 1); });
+}
+
+function goToPage(page) {
     const dataScreen = document.querySelector('.data-screen');
     if (dataScreen) dataScreen.scrollTop = 0;
-    await load();
+    load(page);
 }
 
-async function load() {
+async function load(page = 1) {
     try {
         container.innerHTML = "<p style='padding:20px'>Загрузка...</p>";
-        const result = await fetchReputation(currentPage);
+        paginationContainer.innerHTML = "";
+
+        const result = await fetchPage(page);
         const data = result.data || [];
+        currentPage = result.page || page;
+        currentSearchId = result.search_id || null;
 
         if (data.length && data[0].computed_at) {
             snapshotMeta.textContent = `Снапшот от ${formatDate(data[0].computed_at)}`;
         } else {
             snapshotMeta.textContent = "";
         }
-        renderTable(data, result.page || 1, result.total_pages || 1);
+
+        renderTable(data);
+        renderPagination(currentPage, result.total_pages || 1);
+        btnRepExport.classList.toggle("is-hidden", !(result.total > 0));
     } catch (e) {
         if (e.message === "Unauthorized") return;
         container.innerHTML = `<p style='padding:20px; color:var(--color-danger)'>Ошибка: ${e.message}</p>`;
         snapshotMeta.textContent = "";
     }
 }
+
+function postExport(body) {
+    return Auth.authFetch(`${Auth.API_BASE}/ch/reputation/export`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+    });
+}
+
+async function exportReputation() {
+    const onlyIp = document.getElementById("repExportOnlyIP").checked;
+    const format = document.querySelector('input[name="repExportFormat"]:checked').value;
+
+    const btn = document.getElementById("btnConfirmRepExport");
+    btn.disabled = true;
+    btn.textContent = "Экспорт...";
+
+    try {
+        let response;
+        if (currentSearchId) {
+            response = await postExport({ search_id: currentSearchId, only_ip: onlyIp });
+            if (response.status === 410) {
+                currentSearchId = null;
+                response = await postExport({ ...currentFilters, only_ip: onlyIp });
+            }
+        } else {
+            response = await postExport({ ...currentFilters, only_ip: onlyIp });
+        }
+
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.detail || `HTTP ${response.status}`);
+        }
+
+        const result = await response.json();
+        const data = result.data || [];
+
+        if (!data.length) {
+            alert("Нет данных для экспорта.");
+            return;
+        }
+
+        if (format === "xlsx") {
+            const ws = XLSX.utils.json_to_sheet(data);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Reputation");
+            XLSX.writeFile(wb, "reputation.xlsx");
+        } else {
+            const headers = Object.keys(data[0]).join("\t");
+            const rows = data.map(row => Object.values(row).map(v => v ?? "").join("\t"));
+            const lines = [headers, ...rows].join("\n");
+            const blob = new Blob([lines], { type: "text/plain" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "reputation.txt";
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        reputationExportDialog.close();
+    } catch (e) {
+        if (e.message !== "Unauthorized") {
+            alert(`Ошибка экспорта: ${e.message}`);
+        }
+    } finally {
+        btn.disabled = false;
+        btn.textContent = "Экспорт";
+    }
+}
+
+btnRepFilter.addEventListener("click", () => reputationFilterDialog.showModal());
+btnRepExport.addEventListener("click", () => reputationExportDialog.showModal());
+
+document.getElementById("btnApplyRepFilters").addEventListener("click", () => {
+    currentFilters = collectFilters();
+    currentSearchId = null;
+    updateFilterActive();
+    reputationFilterDialog.close();
+    load(1);
+});
+
+document.getElementById("btnResetRepFilters").addEventListener("click", () => {
+    resetFilterFields();
+    currentFilters = {};
+    currentSearchId = null;
+    updateFilterActive();
+    reputationFilterDialog.close();
+    load(1);
+});
+
+document.getElementById("btnConfirmRepExport").addEventListener("click", exportReputation);
 
 load();
