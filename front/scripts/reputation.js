@@ -1,5 +1,11 @@
 import * as Auth from './auth.js';
 import { requireAuthOrRedirect, initProfilePanel } from './app_shell.js';
+import {
+    renderExcludeOptions,
+    getCheckedExcludeIds,
+    clearExcludeSelection,
+    createFeedList,
+} from './feed_lists_api.js';
 
 const LOGIN_PAGE = '/templates/new_index.html';
 const PAGE_SIZE = 100;
@@ -20,8 +26,11 @@ const paginationContainer = document.getElementById("pagination-container");
 
 const btnRepFilter = document.getElementById("btnRepFilter");
 const btnRepExport = document.getElementById("btnRepExport");
+const btnRepSaveList = document.getElementById("btnRepSaveList");
 const reputationFilterDialog = document.getElementById("reputationFilterDialog");
 const reputationExportDialog = document.getElementById("reputationExportDialog");
+const repSaveListDialog = document.getElementById("repSaveListDialog");
+const repExcludeLists = document.getElementById("repExcludeLists");
 
 const repScoreFrom = document.getElementById("repScoreFrom");
 const repScoreTo = document.getElementById("repScoreTo");
@@ -60,6 +69,9 @@ function collectFilters() {
         f.country_exclude = repCountryExclude.checked;
     }
 
+    const excludeIds = getCheckedExcludeIds(repExcludeLists);
+    if (excludeIds.length) f.exclude_list_ids = excludeIds;
+
     return f;
 }
 
@@ -67,6 +79,7 @@ function resetFilterFields() {
     [repScoreFrom, repScoreTo, repIp, repAsn, repCountry].forEach(el => { el.value = ""; });
     repAsnExclude.checked = false;
     repCountryExclude.checked = false;
+    clearExcludeSelection(repExcludeLists);
 }
 
 function updateFilterActive() {
@@ -255,6 +268,7 @@ async function load(page = 1) {
         renderTable(data);
         renderPagination(currentPage, result.total_pages || 1);
         btnRepExport.classList.toggle("is-hidden", !(result.total > 0));
+        btnRepSaveList.classList.toggle("is-hidden", !(result.total > 0));
     } catch (e) {
         if (e.message === "Unauthorized") return;
         container.innerHTML = `<p style='padding:20px; color:var(--color-danger)'>Ошибка: ${e.message}</p>`;
@@ -332,8 +346,47 @@ async function exportReputation() {
     }
 }
 
-btnRepFilter.addEventListener("click", () => reputationFilterDialog.showModal());
+btnRepFilter.addEventListener("click", () => {
+    reputationFilterDialog.showModal();
+    renderExcludeOptions(repExcludeLists).catch(() => {});
+});
 btnRepExport.addEventListener("click", () => reputationExportDialog.showModal());
+
+btnRepSaveList.addEventListener("click", () => {
+    document.getElementById("repListName").value = "";
+    document.getElementById("repListDescription").value = "";
+    repSaveListDialog.showModal();
+});
+
+document.getElementById("btnConfirmRepSaveList").addEventListener("click", async () => {
+    const name = document.getElementById("repListName").value.trim();
+    const description = document.getElementById("repListDescription").value.trim();
+    if (!name) return alert("Введите название списка");
+
+    const btn = document.getElementById("btnConfirmRepSaveList");
+    btn.disabled = true;
+    btn.textContent = "Сохранение...";
+
+    try {
+        const reputationFilters = currentSearchId
+            ? { ...currentFilters, search_id: currentSearchId }
+            : { ...currentFilters };
+
+        const created = await createFeedList({
+            name,
+            description,
+            source_type: "reputation",
+            reputation_filters: reputationFilters,
+        });
+        alert(`Список "${created.name}" создаётся в фоне, статус можно смотреть в каталоге фид-листов`);
+        repSaveListDialog.close();
+    } catch (e) {
+        if (e.message !== "Unauthorized") alert(`Ошибка: ${e.message}`);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = "Сохранить";
+    }
+});
 
 document.getElementById("btnApplyRepFilters").addEventListener("click", () => {
     currentFilters = collectFilters();

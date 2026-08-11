@@ -7,15 +7,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from project.module_ch_api_gateway.api.dependencies.dependencies import rate_limit_cleanup_loop
-from project.module_ch_api_gateway.api.routers import clickhouse_router, auth_router, data_router, user_router, simple_router
+from project.module_ch_api_gateway.api.routers import clickhouse_router, auth_router, data_router, user_router, simple_router, feed_lists_router
 from project.module_ch_api_gateway.infrastructure.clickhouse_client import ClickHouseClient
 from project.module_ch_api_gateway.infrastructure.db import DatabaseManager
+from project.module_ch_api_gateway.infrastructure.feed_list_repo import FeedListRepository
 from project.module_ch_api_gateway.infrastructure.nats_client import NatsInfrastructure
+from project.module_ch_api_gateway.services.feed_list_service import FeedListService, search_cleanup_loop
 from project.module_ch_api_gateway.services.state_service import StateService
 from project.module_ch_api_gateway.services.user_service import UserService
 from project.module_ch_api_gateway.infrastructure.geoip_client import GeoIPClient
 from project.module_ch_api_gateway.api.routers import reputation_router
-from project.module_ch_api_gateway.services.search_session import session_cleanup_loop
 
 logger = logging.getLogger("ch-api-gateway")
 
@@ -27,6 +28,7 @@ def create_app(config: dict) -> FastAPI:
             await app.state.user_service.seed_admin()
             await app.state.user_service.load_revoked_jtis()
             app.state.user_service.start_cleanup_loop()
+            await app.state.feed_list_service.repo.fail_stale_lists()
 
         connected = await app.state.db.connect_safe()
         if connected:
@@ -38,12 +40,12 @@ def create_app(config: dict) -> FastAPI:
         logger.info("action=nats_connect status=success")
 
         cleanup_task = asyncio.create_task(rate_limit_cleanup_loop(app.state))
-        session_cleanup_task = asyncio.create_task(session_cleanup_loop())
+        search_cleanup_task = asyncio.create_task(search_cleanup_loop(app.state.feed_list_service.repo))
         try:
             yield
         finally:
             cleanup_task.cancel()
-            session_cleanup_task.cancel()
+            search_cleanup_task.cancel()
             app.state.user_service.stop_cleanup_loop()
             await app.state.nats_infra.close()
             logger.info("action=nats_disconnect status=success")
@@ -65,6 +67,7 @@ def create_app(config: dict) -> FastAPI:
     )
     app.state.user_service = UserService(app.state.db)
     app.state.state_service = StateService(app.state.db)
+    app.state.feed_list_service = FeedListService(FeedListRepository(app.state.db))
 
     app.state.ch_client = ClickHouseClient(
         host=config["clickhouse"]["host"],
@@ -104,5 +107,6 @@ def create_app(config: dict) -> FastAPI:
     app.include_router(data_router.router)
     app.include_router(simple_router.router)
     app.include_router(reputation_router.router)
+    app.include_router(feed_lists_router.router)
 
     return app

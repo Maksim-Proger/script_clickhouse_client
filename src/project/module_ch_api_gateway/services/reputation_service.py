@@ -1,9 +1,15 @@
 import asyncio
 import ipaddress
+import json
 import logging
 
 from project.module_ch_api_gateway.models.filters import ReputationFilters
-from project.module_ch_api_gateway.services.search_session import SessionExpiredError
+from project.module_ch_api_gateway.services.feed_list_service import (
+    CHUNK_SIZE,
+    SessionExpiredError,
+    SourceUnavailableError,
+    check_source_size,
+)
 
 logger = logging.getLogger("ch-api-gateway.reputation")
 
@@ -25,8 +31,6 @@ _INT_FIELDS = (
     "events_count", "max_5m_events", "max_hour_events",
     "active_5m_windows", "active_hours", "active_days", "sources_count",
 )
-
-_FETCH_ALL_CAP = 200_000
 
 
 def _safe_cidr(value: str) -> str:
@@ -61,13 +65,6 @@ def _build_count_query(where: str) -> str:
     return f"SELECT count() as total FROM feedgen.ip_reputation_snapshots {where}"
 
 
-def _build_all_query(where: str) -> str:
-    return (
-        f"SELECT {_SELECT_COLS} FROM feedgen.ip_reputation_snapshots "
-        f"{where} ORDER BY score DESC LIMIT {_FETCH_ALL_CAP}"
-    )
-
-
 def _coerce_ints(records: list[dict]) -> list[dict]:
     for record in records:
         for field in _INT_FIELDS:
@@ -78,6 +75,10 @@ def _coerce_ints(records: list[dict]) -> list[dict]:
 
 def _has_geo_filter(filters: ReputationFilters) -> bool:
     return bool(filters.asn) or bool(filters.country)
+
+
+def needs_session(filters: ReputationFilters) -> bool:
+    return _has_geo_filter(filters) or bool(filters.exclude_list_ids)
 
 
 def _apply_geo_filter(records: list[dict], filters: ReputationFilters) -> list[dict]:
@@ -98,24 +99,39 @@ def _apply_geo_filter(records: list[dict], filters: ReputationFilters) -> list[d
     return records
 
 
-def _page_slice(rows: list, page: int, page_size: int) -> list:
-    start = (page - 1) * page_size
-    return rows[start:start + page_size]
+def _only_ip_row(raw: str) -> str:
+    return json.dumps({"ip_address": json.loads(raw)["ip_address"]}, ensure_ascii=False)
 
 
 class ReputationService:
-    def __init__(self, ch_client, geoip_client, sessions):
+    def __init__(self, ch_client, geoip_client):
         self.ch_client = ch_client
         self.geoip_client = geoip_client
-        self.sessions = sessions
 
     async def _enrich(self, records: list[dict]) -> list[dict]:
         return await asyncio.to_thread(self.geoip_client.enrich_batch, records)
 
-    async def _load_filtered(self, where: str, filters: ReputationFilters) -> list[dict]:
-        res = await self.ch_client.fetch_json(_build_all_query(where))
-        records = await self._enrich(_coerce_ints(res.get("data", [])))
-        return _apply_geo_filter(records, filters)
+    async def fetch_snapshot_chunk(self, filters: ReputationFilters, limit: int, offset: int,
+                                   enrich: bool = True) -> tuple[list[dict], int]:
+        where = _build_where(filters)
+        query = (
+            f"SELECT {_SELECT_COLS} FROM feedgen.ip_reputation_snapshots "
+            f"{where} ORDER BY score DESC, ip_address LIMIT {limit} OFFSET {offset}"
+        )
+        res = await self.ch_client.fetch_json(query)
+        raw = _coerce_ints(res.get("data", []))
+        if not enrich:
+            return raw, len(raw)
+        records = await self._enrich(raw)
+        return _apply_geo_filter(records, filters), len(raw)
+
+    async def count_snapshot(self, filters: ReputationFilters) -> int:
+        try:
+            res = await self.ch_client.fetch_json(_build_count_query(_build_where(filters)))
+            return int(res["data"][0]["total"])
+        except Exception as e:
+            logger.error("action=reputation_count_failed error=%s", str(e))
+            raise SourceUnavailableError()
 
     @staticmethod
     def _envelope(data: list, total: int, page: int, page_size: int, search_id: str = None) -> dict:
@@ -130,25 +146,27 @@ class ReputationService:
             env["search_id"] = search_id
         return env
 
-    async def get_reputation(self, filters: ReputationFilters, user: str) -> dict:
+    async def get_reputation(self, filters: ReputationFilters, user: str, feed_service) -> dict:
         page, page_size = filters.page, filters.page_size
 
-        if filters.search_id:
-            rows = self.sessions.get(user, filters.search_id)
-            if rows is None:
-                raise SessionExpiredError(filters.search_id)
-            return self._envelope(_page_slice(rows, page, page_size), len(rows), page, page_size,
-                                  search_id=filters.search_id)
-
-        where = _build_where(filters)
-
         try:
-            if _has_geo_filter(filters):
-                rows = await self._load_filtered(where, filters)
-                search_id = self.sessions.create(user, rows)
-                logger.info("action=reputation_search_created search_id=%s total=%d", search_id, len(rows))
-                return self._envelope(_page_slice(rows, page, page_size), len(rows), page, page_size,
-                                      search_id=search_id)
+            if filters.search_id:
+                result = await feed_service.get_search_page(user, filters.search_id, page, page_size)
+                if result is None:
+                    raise SessionExpiredError(filters.search_id)
+                return self._envelope(result["data"], result["total"], page, page_size,
+                                      search_id=filters.search_id)
+
+            if needs_session(filters):
+                check_source_size(await self.count_snapshot(filters))
+                built = await feed_service.build_reputation_search(
+                    user, self, filters, filters.exclude_list_ids,
+                )
+                result = await feed_service.get_search_page(user, built["search_id"], page, page_size)
+                return self._envelope(result["data"] if result else [], built["total"], page, page_size,
+                                      search_id=built["search_id"])
+
+            where = _build_where(filters)
 
             data_res = await self.ch_client.fetch_json(_build_page_query(where, page, page_size))
             page_rows = _coerce_ints(data_res.get("data", []))
@@ -157,36 +175,56 @@ class ReputationService:
             total = int(count_res["data"][0]["total"])
 
             page_rows = await self._enrich(page_rows)
+        except (SessionExpiredError, SourceUnavailableError, ValueError):
+            raise
         except Exception as e:
             logger.error("action=reputation_fetch_failed error=%s", str(e))
-            return self._envelope([], 0, page, page_size)
+            raise SourceUnavailableError()
 
         return self._envelope(page_rows, total, page, page_size)
 
-    async def export_reputation(self, filters: ReputationFilters, user: str) -> dict:
-        if filters.search_id:
-            rows = self.sessions.get(user, filters.search_id)
-            if rows is None:
-                raise SessionExpiredError(filters.search_id)
-            records = [{"ip_address": r["ip_address"]} for r in rows] if filters.only_ip else rows
-            return {"data": records, "total": len(records)}
-
-        where = _build_where(filters)
-
+    async def start_export(self, filters: ReputationFilters, user: str, feed_service) -> tuple:
         try:
-            if _has_geo_filter(filters):
-                records = await self._load_filtered(where, filters)
-            else:
-                res = await self.ch_client.fetch_json(_build_all_query(where))
-                records = _coerce_ints(res.get("data", []))
-                if not filters.only_ip:
-                    records = await self._enrich(records)
+            if filters.search_id:
+                total = await feed_service.get_search_total(user, filters.search_id)
+                if total is None:
+                    raise SessionExpiredError(filters.search_id)
+                return filters.search_id, total
 
-            if filters.only_ip:
-                records = [{"ip_address": r["ip_address"]} for r in records]
+            if needs_session(filters):
+                check_source_size(await self.count_snapshot(filters))
+                built = await feed_service.build_reputation_search(
+                    user, self, filters, filters.exclude_list_ids,
+                )
+                return built["search_id"], built["total"]
+
+            total = await self.count_snapshot(filters)
+            check_source_size(total)
+            return None, total
+        except (SessionExpiredError, SourceUnavailableError, ValueError):
+            raise
         except Exception as e:
             logger.error("action=reputation_export_failed error=%s", str(e))
-            return {"data": [], "total": 0}
+            raise SourceUnavailableError()
 
-        logger.info("action=reputation_export count=%d only_ip=%s", len(records), filters.only_ip)
-        return {"data": records, "total": len(records)}
+    async def iter_export_chunks(self, filters: ReputationFilters, user: str, feed_service, search_id):
+        logger.info("action=reputation_export search_id=%s only_ip=%s user=%s", search_id, filters.only_ip, user)
+
+        if search_id:
+            async for chunk in feed_service.iter_search_rows(user, search_id):
+                yield [_only_ip_row(row) for row in chunk] if filters.only_ip else chunk
+            return
+
+        offset = 0
+        while True:
+            rows, fetched = await self.fetch_snapshot_chunk(
+                filters, CHUNK_SIZE, offset, enrich=not filters.only_ip,
+            )
+            if fetched == 0:
+                break
+            if filters.only_ip:
+                rows = [{"ip_address": r["ip_address"]} for r in rows]
+            yield [json.dumps(r, ensure_ascii=False, default=str) for r in rows]
+            if fetched < CHUNK_SIZE:
+                break
+            offset += CHUNK_SIZE

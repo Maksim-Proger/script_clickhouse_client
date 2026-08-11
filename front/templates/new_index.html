@@ -72,7 +72,9 @@
         <button class="action" id="btnDG">Получить данные из DG</button>
         <button class="action" id="btnUpload">Добавить данные</button>
         <button class="action" id="btnExport">Экспорт данных</button>
+        <button class="action is-hidden" id="btnSaveList">Выборка → фид-лист</button>
         <button class="action" onclick="window.location.href='/templates/reputation.html'">Репутация IP</button>
+        <button class="action" onclick="window.location.href='/templates/feed_lists.html'">Фид-листы</button>
         <button class="action" id="btnUsers" onclick="window.location.href='/templates/users.html'">Пользователи</button>
     </div>
 
@@ -172,6 +174,11 @@
             </label>
         </div>
 
+        <label class="login-field">
+            <span>Исключить IP из фид-листов</span>
+        </label>
+        <div id="exportExcludeLists" class="exclude-lists">Загрузка...</div>
+
         <div class="format-options" style="margin-bottom: 15px;">
             <label class="radio-option">
                 <input type="radio" name="exportFormat" value="xlsx" checked>
@@ -236,9 +243,38 @@
             <input type="text" id="filterProfile" placeholder="название профиля">
         </label>
 
+        <hr class="menu-divider">
+
+        <label class="login-field">
+            <span>Исключить IP из фид-листов</span>
+        </label>
+        <div id="chExcludeLists" class="exclude-lists">Загрузка...</div>
+
         <div class="dialog-actions" style="margin-top: 15px;">
             <button class="secondary-button" onclick="document.getElementById('rchFilterDialog').close()">Отмена</button>
             <button class="primary-button" id="btnApplyFilters">Применить</button>
+        </div>
+    </div>
+</dialog>
+
+<dialog id="saveListDialog" class="modern-dialog">
+    <div class="dialog-content">
+        <h3>Сохранить выборку как фид-лист</h3>
+        <p>Сохраняются уникальные IP по фильтрам текущей выборки. Если период не задан, берутся последние 7 суток.</p>
+
+        <label class="login-field">
+            <span>Название</span>
+            <input type="text" id="chListName" placeholder="например blocked-week-29">
+        </label>
+
+        <label class="login-field">
+            <span>Описание</span>
+            <input type="text" id="chListDescription" placeholder="необязательно">
+        </label>
+
+        <div class="dialog-actions" style="margin-top: 15px;">
+            <button class="secondary-button" onclick="this.closest('dialog').close()">Отмена</button>
+            <button class="primary-button" id="btnConfirmSaveList">Сохранить</button>
         </div>
     </div>
 </dialog>
