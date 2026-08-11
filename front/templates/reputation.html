@@ -50,6 +50,7 @@
         </div>
 
         <button class="action" onclick="window.location.href='/templates/new_index.html'">Назад</button>
+        <button class="action" onclick="window.location.href='/templates/feed_lists.html'">Фид-листы</button>
     </div>
 
     <div class="content">
@@ -59,6 +60,7 @@
                 <span class="page-header__meta" id="snapshotMeta">Загрузка...</span>
                 <button class="header-action" id="btnRepFilter">Фильтры</button>
                 <button class="header-action is-hidden" id="btnRepExport">Экспорт</button>
+                <button class="header-action is-hidden" id="btnRepSaveList">В список</button>
             </div>
         </div>
         <div class="data-screen data-screen--with-header">
@@ -109,6 +111,13 @@
             <span>Исключить указанные страны</span>
         </label>
 
+        <hr class="menu-divider">
+
+        <label class="login-field">
+            <span>Исключить IP из фид-листов</span>
+        </label>
+        <div id="repExcludeLists" class="exclude-lists">Загрузка...</div>
+
         <div class="dialog-actions" style="margin-top: 15px;">
             <button class="secondary-button" id="btnResetRepFilters">Сбросить</button>
             <button class="secondary-button" onclick="this.closest('dialog').close()">Отмена</button>
@@ -143,6 +152,28 @@
         <div class="dialog-actions">
             <button class="secondary-button" onclick="this.closest('dialog').close()">Отмена</button>
             <button class="primary-button" id="btnConfirmRepExport">Экспорт</button>
+        </div>
+    </div>
+</dialog>
+
+<dialog id="repSaveListDialog" class="modern-dialog">
+    <div class="dialog-content">
+        <h3>Сохранить выборку как фид-лист</h3>
+        <p>Сохраняется текущая выборка: с применёнными фильтрами или весь последний снапшот, если фильтров нет.</p>
+
+        <label class="login-field">
+            <span>Название</span>
+            <input type="text" id="repListName" placeholder="например high-risk-2026-07">
+        </label>
+
+        <label class="login-field">
+            <span>Описание</span>
+            <input type="text" id="repListDescription" placeholder="необязательно">
+        </label>
+
+        <div class="dialog-actions" style="margin-top: 15px;">
+            <button class="secondary-button" onclick="this.closest('dialog').close()">Отмена</button>
+            <button class="primary-button" id="btnConfirmRepSaveList">Сохранить</button>
         </div>
     </div>
 </dialog>

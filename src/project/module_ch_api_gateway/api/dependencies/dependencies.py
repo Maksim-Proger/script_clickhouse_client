@@ -113,6 +113,34 @@ def get_ch_service(request: Request) -> ClickHouseService:
     return ClickHouseService(request.app.state.ch_client)
 
 
+def get_feed_list_service(request: Request):
+    return request.app.state.feed_list_service
+
+
+async def get_interactive_user(user=Depends(get_current_user)):
+    if user.get("type") == "static":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Операция недоступна для сервисного токена",
+        )
+    return user
+
+
+async def resolve_exclusions(request: Request, list_ids: list[int]):
+    if not list_ids:
+        return None
+    feed_service = request.app.state.feed_list_service
+    if not feed_service.is_available:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="БД временно недоступна, списки исключений не применить",
+        )
+    try:
+        return await feed_service.resolve_exclude_lists(list_ids)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
 def get_state_service(request: Request) -> StateService:
     return request.app.state.state_service
 

@@ -52,6 +52,103 @@ CREATE_PROFILE_STATES_INDEX = """
 CREATE INDEX IF NOT EXISTS idx_profile_states_profile ON profile_states (profile);
 """
 
+CREATE_FEED_LISTS_TABLE = """
+CREATE TABLE IF NOT EXISTS feed_lists (
+    id             SERIAL PRIMARY KEY,
+    name           VARCHAR(200) NOT NULL UNIQUE,
+    description    TEXT NOT NULL DEFAULT '',
+    created_by     VARCHAR(150) NOT NULL,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    status         VARCHAR(20) NOT NULL DEFAULT 'creating',
+    source_type    VARCHAR(30) NOT NULL,
+    source_filters JSONB NOT NULL DEFAULT '{}'::jsonb,
+    version        INT NOT NULL DEFAULT 1,
+    item_count     BIGINT NOT NULL DEFAULT 0,
+    last_error     TEXT
+);
+"""
+
+CREATE_FEED_LIST_ITEMS_TABLE = """
+CREATE TABLE IF NOT EXISTS feed_list_items (
+    list_id     INT NOT NULL REFERENCES feed_lists(id) ON DELETE CASCADE,
+    version     INT NOT NULL,
+    value       VARCHAR(64) NOT NULL,
+    value_type  VARCHAR(10) NOT NULL DEFAULT 'ip',
+    value_net   INET NOT NULL,
+    score       REAL,
+    risk_level  VARCHAR(20),
+    asn         BIGINT,
+    country     VARCHAR(8),
+    source      VARCHAR(150),
+    first_seen  TIMESTAMPTZ,
+    last_seen   TIMESTAMPTZ,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (list_id, version, value)
+);
+"""
+
+CREATE_FEED_LIST_ITEMS_INDEX = """
+CREATE INDEX IF NOT EXISTS idx_feed_list_items_list_version ON feed_list_items (list_id, version);
+"""
+
+CREATE_FEED_LIST_ITEMS_NET_INDEX = """
+CREATE INDEX IF NOT EXISTS idx_feed_list_items_net ON feed_list_items USING gist (value_net inet_ops);
+"""
+
+CREATE_SEARCH_SESSIONS_TABLE = """
+CREATE UNLOGGED TABLE IF NOT EXISTS search_sessions (
+    search_id  VARCHAR(64) PRIMARY KEY,
+    owner      VARCHAR(150) NOT NULL,
+    kind       VARCHAR(20) NOT NULL,
+    filters    JSONB NOT NULL DEFAULT '{}'::jsonb,
+    total      BIGINT NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at TIMESTAMPTZ NOT NULL
+);
+"""
+
+CREATE_SEARCH_SESSION_ROWS_TABLE = """
+CREATE UNLOGGED TABLE IF NOT EXISTS search_session_rows (
+    search_id VARCHAR(64) NOT NULL REFERENCES search_sessions(search_id) ON DELETE CASCADE,
+    seq       BIGINT NOT NULL,
+    row       TEXT NOT NULL,
+    PRIMARY KEY (search_id, seq)
+);
+"""
+
+UPGRADE_SEARCH_TABLES = [
+    "ALTER TABLE search_sessions SET UNLOGGED",
+    "ALTER TABLE search_session_rows SET UNLOGGED",
+]
+
+UPGRADE_FEED_TABLES = [
+    """
+    DO $$
+    BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name = 'feed_lists'
+                     AND column_name = 'item_count' AND data_type = 'integer') THEN
+            ALTER TABLE feed_lists ALTER COLUMN item_count TYPE BIGINT;
+        END IF;
+    END $$;
+    """,
+    "ALTER TABLE feed_lists ADD COLUMN IF NOT EXISTS last_error TEXT",
+    "ALTER TABLE feed_lists ALTER COLUMN status SET DEFAULT 'creating'",
+    "ALTER TABLE feed_list_items ADD COLUMN IF NOT EXISTS value_net INET",
+    "UPDATE feed_list_items SET value_net = value::inet WHERE value_net IS NULL",
+    """
+    DO $$
+    BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name = 'feed_list_items'
+                     AND column_name = 'value_net' AND is_nullable = 'YES') THEN
+            ALTER TABLE feed_list_items ALTER COLUMN value_net SET NOT NULL;
+        END IF;
+    END $$;
+    """,
+]
+
 
 class DatabaseManager:
 
@@ -124,6 +221,16 @@ class DatabaseManager:
             await conn.execute(CREATE_SESSIONS_USERNAME_INDEX)
             await conn.execute(CREATE_PROFILE_STATES_TABLE)
             await conn.execute(CREATE_PROFILE_STATES_INDEX)
+            await conn.execute(CREATE_FEED_LISTS_TABLE)
+            await conn.execute(CREATE_FEED_LIST_ITEMS_TABLE)
+            for statement in UPGRADE_FEED_TABLES:
+                await conn.execute(statement)
+            await conn.execute(CREATE_FEED_LIST_ITEMS_INDEX)
+            await conn.execute(CREATE_FEED_LIST_ITEMS_NET_INDEX)
+            await conn.execute(CREATE_SEARCH_SESSIONS_TABLE)
+            await conn.execute(CREATE_SEARCH_SESSION_ROWS_TABLE)
+            for statement in UPGRADE_SEARCH_TABLES:
+                await conn.execute(statement)
 
     async def get_user_by_username(self, username: str) -> Optional[asyncpg.Record]:
         async with self.pool.acquire() as conn:

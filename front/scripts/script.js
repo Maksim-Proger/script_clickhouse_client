@@ -1,5 +1,6 @@
 import * as Auth from './auth.js';
 import { initProfilePanel, refreshCurrentUser } from './app_shell.js';
+import { renderExcludeOptions, getCheckedExcludeIds, createFeedList } from './feed_lists_api.js';
 
 document.addEventListener("DOMContentLoaded", () => {
 
@@ -11,6 +12,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const uploadDialog = document.getElementById("uploadDialog");
     const exportDialog = document.getElementById("exportDialog");
     const rchFilterDialog = document.getElementById("rchFilterDialog");
+    const saveListDialog = document.getElementById("saveListDialog");
+    const btnSaveList = document.getElementById("btnSaveList");
+    const chExcludeLists = document.getElementById("chExcludeLists");
+    const exportExcludeLists = document.getElementById("exportExcludeLists");
     const container = document.getElementById("data-list");
     const paginationContainer = document.getElementById("pagination-container");
     const fileInput = document.getElementById("fileInput");
@@ -22,6 +27,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     let currentFilters = {};
     let currentPage = 1;
+    let currentSearchId = null;
 
     Auth.setSessionExpiredHandler(showLogin);
 
@@ -90,46 +96,67 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
+    function collectCHFilters() {
+        const exactDate = document.getElementById("filterDate").value || null;
+        const rangeStart = document.getElementById("filterDateFrom").value
+            ? document.getElementById("filterDateFrom").value + " " + (document.getElementById("filterTimeFrom").value || "00:00:00")
+            : null;
+        const rangeEnd = document.getElementById("filterDateTo").value
+            ? document.getElementById("filterDateTo").value + " " + (document.getElementById("filterTimeTo").value || "23:59:59")
+            : null;
+
+        return {
+            blocked_at: exactDate,
+            period: (rangeStart || rangeEnd) ? {
+                from: rangeStart || null,
+                to: rangeEnd || null
+            } : null,
+            ip: document.getElementById("filterIP").value.trim() || null,
+            source: document.getElementById("filterSource").value || null,
+            profile: document.getElementById("filterProfile").value.trim() || null,
+            exclude_list_ids: getCheckedExcludeIds(chExcludeLists)
+        };
+    }
+
+    function postCHRead(body) {
+        return Auth.authFetch(`${Auth.API_BASE}/ch/read`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body)
+        });
+    }
+
     async function requestCH(page = 1) {
         try {
             container.innerHTML = "<p style='padding:20px'>Загрузка...</p>";
             paginationContainer.innerHTML = "";
-
-            const exactDate = document.getElementById("filterDate").value || null;
-            const rangeStart = document.getElementById("filterDateFrom").value
-                ? document.getElementById("filterDateFrom").value + " " + (document.getElementById("filterTimeFrom").value || "00:00:00")
-                : null;
-            const rangeEnd = document.getElementById("filterDateTo").value
-                ? document.getElementById("filterDateTo").value + " " + (document.getElementById("filterTimeTo").value || "23:59:59")
-                : null;
-
-            currentFilters = {
-                blocked_at: exactDate,
-                period: (rangeStart || rangeEnd) ? {
-                    from: rangeStart || null,
-                    to: rangeEnd || null
-                } : null,
-                ip: document.getElementById("filterIP").value.trim() || null,
-                source: document.getElementById("filterSource").value || null,
-                profile: document.getElementById("filterProfile").value.trim() || null
-            };
             currentPage = page;
 
-            const response = await Auth.authFetch(`${Auth.API_BASE}/ch/read`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ ...currentFilters, page, page_size: 100 })
-            });
+            let response;
+            if (currentSearchId) {
+                response = await postCHRead({ search_id: currentSearchId, page, page_size: 100 });
+                if (response.status === 410) {
+                    currentSearchId = null;
+                    response = await postCHRead({ ...currentFilters, page, page_size: 100 });
+                }
+            } else {
+                currentFilters = collectCHFilters();
+                response = await postCHRead({ ...currentFilters, page, page_size: 100 });
+            }
 
             const result = await response.json();
+            if (!response.ok) throw new Error(result.detail || `HTTP ${response.status}`);
+            currentSearchId = result.search_id || null;
             const data = result.data || [];
 
             if (!Array.isArray(data)) throw new Error("Некорректный ответ сервера");
 
             renderTable(data, result.page || 1, result.total_pages || 1);
+            btnSaveList.classList.toggle("is-hidden", data.length === 0);
         } catch (e) {
             if (e.message !== "Unauthorized") {
                 container.innerHTML = `<p style='padding:20px; color:red'>Ошибка: ${e.message}</p>`;
+                btnSaveList.classList.add("is-hidden");
             }
         }
     }
@@ -304,6 +331,7 @@ document.addEventListener("DOMContentLoaded", () => {
             source:  document.getElementById("exportFilterSource").value.trim()  || null,
             profile: document.getElementById("exportFilterProfile").value.trim() || null,
             unique_ips: uniqueIPs,
+            exclude_list_ids: getCheckedExcludeIds(exportExcludeLists),
         };
 
         const btnConfirmExport = document.getElementById("btnConfirmExport");
@@ -364,10 +392,14 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
-    document.getElementById("btnCH").addEventListener("click", () => rchFilterDialog.showModal());
+    document.getElementById("btnCH").addEventListener("click", () => {
+        rchFilterDialog.showModal();
+        renderExcludeOptions(chExcludeLists).catch(() => {});
+    });
 
     btnApplyFilters.addEventListener("click", () => {
         rchFilterDialog.close();
+        currentSearchId = null;
         requestCH(1);
     });
 
@@ -381,8 +413,43 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("btnUpload").addEventListener("click", () => uploadDialog.showModal());
     btnUploadFile.addEventListener("click", uploadFile);
 
-    document.getElementById("btnExport").addEventListener("click", () => exportDialog.showModal());
+    document.getElementById("btnExport").addEventListener("click", () => {
+        exportDialog.showModal();
+        renderExcludeOptions(exportExcludeLists).catch(() => {});
+    });
     btnConfirmExport.addEventListener("click", exportData);
+
+    document.getElementById("btnSaveList").addEventListener("click", () => {
+        document.getElementById("chListName").value = "";
+        document.getElementById("chListDescription").value = "";
+        saveListDialog.showModal();
+    });
+
+    document.getElementById("btnConfirmSaveList").addEventListener("click", async () => {
+        const name = document.getElementById("chListName").value.trim();
+        const description = document.getElementById("chListDescription").value.trim();
+        if (!name) return alert("Введите название списка");
+
+        const btn = document.getElementById("btnConfirmSaveList");
+        btn.disabled = true;
+        btn.textContent = "Сохранение...";
+
+        try {
+            const created = await createFeedList({
+                name,
+                description,
+                source_type: "blocked_ips",
+                blocked_ips_filters: { ...currentFilters, unique_ips: true },
+            });
+            alert(`Список "${created.name}" создаётся в фоне, статус можно смотреть в каталоге фид-листов`);
+            saveListDialog.close();
+        } catch (e) {
+            if (e.message !== "Unauthorized") alert(`Ошибка: ${e.message}`);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = "Сохранить";
+        }
+    });
 
     document.querySelectorAll('input[name="uploadFormat"]').forEach(radio => {
         radio.addEventListener("change", () => {

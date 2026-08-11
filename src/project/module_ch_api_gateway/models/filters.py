@@ -17,6 +17,8 @@ class CHReadFilters(BaseModel):
     page: int = 1
     page_size: int = 100
     unique_ips: bool = False
+    exclude_list_ids: list[int] = []
+    search_id: Optional[str] = None
 
 
 class CHSimpleFilters(BaseModel):
@@ -37,3 +39,4 @@ class ReputationFilters(BaseModel):
     page_size: int = Field(100, ge=1, le=1000)
     only_ip: bool = False
     search_id: Optional[str] = None
+    exclude_list_ids: list[int] = []
