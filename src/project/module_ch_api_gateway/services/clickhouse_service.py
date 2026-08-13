@@ -196,7 +196,7 @@ class ClickHouseService:
 
     async def count_unique_ips(self, filters: CHReadFilters) -> int:
         return await self._count(
-            f"SELECT uniq(ip_address) as total FROM `feedgen`.`blocked_ips` {self._where_clause(filters)}"
+            f"SELECT uniqExact(ip_address) as total FROM `feedgen`.`blocked_ips` {self._where_clause(filters)}"
         )
 
     async def count_export_rows(self, filters: CHReadFilters) -> int:
@@ -236,14 +236,18 @@ class ClickHouseService:
         result = await self.client.fetch_json(query)
         return result.get("data", [])
 
-    async def fetch_unique_ip_chunk(self, filters: CHReadFilters, limit: int, offset: int) -> list:
+    async def fetch_unique_ip_chunk(self, filters: CHReadFilters, limit: int, after_ip: str = "") -> list:
+        conditions = self._build_conditions(filters)
+        if after_ip:
+            conditions.append(f"ip_address > '{_safe_ip(after_ip)}'")
+        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
         query = (
             f"SELECT ip_address, min(blocked_at) as first_detected, max(blocked_at) as last_detected, "
             f"any(source) as source "
-            f"FROM `feedgen`.`blocked_ips` {self._where_clause(filters)} "
+            f"FROM `feedgen`.`blocked_ips` {where_clause} "
             f"GROUP BY ip_address "
             f"ORDER BY ip_address "
-            f"LIMIT {limit} OFFSET {offset}"
+            f"LIMIT {limit}"
         )
         result = await self.client.fetch_json(query)
         return result.get("data", [])

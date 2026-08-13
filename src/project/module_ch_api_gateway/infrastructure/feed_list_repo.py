@@ -1,3 +1,4 @@
+import asyncio
 import ipaddress
 import logging
 from typing import Optional
@@ -17,6 +18,16 @@ _ITEM_SELECT = (
     "value, value_type, score, risk_level, asn, country, "
     "source, first_seen, last_seen, created_at"
 )
+
+
+def _parse_addrs(ips: list[str]) -> list:
+    addrs = []
+    for ip in ips:
+        try:
+            addrs.append(ipaddress.ip_address(ip))
+        except ValueError:
+            pass
+    return addrs
 
 
 class FeedListRepository:
@@ -82,15 +93,25 @@ class FeedListRepository:
 
     async def fail_stale_lists(self) -> int:
         async with self.db.pool.acquire() as conn:
-            result = await conn.execute(
-                "UPDATE feed_lists SET status = 'failed', "
-                "last_error = 'Сборка прервана перезапуском сервиса', updated_at = now() "
-                "WHERE status = 'creating'"
-            )
-            count = int(result.split()[-1])
-            if count > 0:
-                logger.warning("action=feed_lists_stale_failed count=%d", count)
-            return count
+            async with conn.transaction():
+                rows = await conn.fetch(
+                    "UPDATE feed_lists SET status = 'failed', "
+                    "last_error = 'Сборка прервана перезапуском сервиса', updated_at = now() "
+                    "WHERE status = 'creating' "
+                    "RETURNING id, version"
+                )
+                for r in rows:
+                    await conn.execute(
+                        "DELETE FROM feed_list_items WHERE list_id = $1 AND version = $2",
+                        r["id"], r["version"],
+                    )
+            if rows:
+                logger.warning(
+                    "action=feed_lists_stale_failed count=%d ids=%s",
+                    len(rows), ",".join(str(r["id"]) for r in rows),
+                )
+            return len(rows)
+
 
     async def list_catalog(
             self,
@@ -163,12 +184,7 @@ class FeedListRepository:
             last_value = rows[-1]["value"]
 
     async def find_excluded(self, list_ids: list[int], ips: list[str]) -> set[str]:
-        addrs = []
-        for ip in ips:
-            try:
-                addrs.append(ipaddress.ip_address(ip))
-            except ValueError:
-                pass
+        addrs = await asyncio.to_thread(_parse_addrs, ips)
         if not addrs:
             return set()
 
@@ -196,6 +212,15 @@ class FeedListRepository:
         async with self.db.pool.acquire() as conn:
             result = await conn.execute("DELETE FROM feed_lists WHERE id = $1", list_id)
             return result.split()[-1] == "1"
+
+    async def delete_items(self, list_id: int, version: int) -> int:
+        async with self.db.pool.acquire() as conn:
+            result = await conn.execute(
+                "DELETE FROM feed_list_items WHERE list_id = $1 AND version = $2",
+                list_id,
+                version
+            )
+            return int(result.split()[-1])
 
     async def create_search_session(
             self,

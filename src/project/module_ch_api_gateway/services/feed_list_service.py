@@ -62,6 +62,11 @@ def _parse_dt(value: Any) -> Optional[datetime]:
 def _to_tuples(items: list[dict]) -> list[tuple]:
     return [tuple(item[field] for field in _ITEM_FIELDS) for item in items]
 
+def _rows_to_tuples(rows: list, row_to_item) -> list[tuple]:
+    return _to_tuples([item for item in (row_to_item(r) for r in rows) if item])
+
+def _rows_to_json(rows: list[dict]) -> list[str]:
+    return [json.dumps(r, ensure_ascii=False, default=str) for r in rows]
 
 def _reputation_row_to_item(row: dict) -> Optional[dict]:
     ip = row.get("ip_address")
@@ -187,9 +192,17 @@ class FeedListService:
         try:
             await self.repo.insert_items(row["id"], row["version"], items)
             finalized = await self.repo.finalize_list(row["id"])
+
         except Exception as e:
             await self.repo.fail_list(row["id"], str(e))
+            try:
+                await self.repo.delete_items(row["id"], row["version"])
+            except Exception as cleanup_err:
+                logger.error(
+                    "action=feed_list_items_cleanup_failed id=%d error=%s", row["id"], str(cleanup_err)
+                )
             raise
+
         logger.info(
             "action=feed_list_created id=%d name=%s source_type=manual items=%d created_by=%s",
             row["id"], row["name"], len(items), created_by,
@@ -223,12 +236,21 @@ class FeedListService:
                     "action=feed_list_build_done id=%d items=%d",
                     list_id, finalized["item_count"] if finalized else -1,
                 )
+
             except Exception as e:
                 logger.error("action=feed_list_build_failed id=%d error=%s", list_id, str(e))
                 try:
                     await self.repo.fail_list(list_id, str(e))
                 except Exception as db_err:
                     logger.error("action=feed_list_fail_mark_error id=%d error=%s", list_id, str(db_err))
+                try:
+                    deleted = await self.repo.delete_items(list_id, version)
+                    if deleted:
+                        logger.info("action=feed_list_items_cleanup id=%d deleted=%d", list_id, deleted)
+                except Exception as cleanup_err:
+                    logger.error(
+                        "action=feed_list_items_cleanup_failed id=%d error=%s", list_id, str(cleanup_err)
+                    )
 
         asyncio.create_task(runner())
         logger.info(
@@ -237,25 +259,35 @@ class FeedListService:
         )
         return self.serialize_list(row)
 
-    async def build_from_ch(self, list_id: int, version: int, ch_service, filters, exclude_ids: list[int]) -> None:
-        offset = 0
-        inserted = 0
+    async def build_from_ch(self,
+                            list_id: int,
+                            version: int,
+                            ch_service,
+                            filters,
+                            exclude_ids: list[int]) -> None:
+        after_ip = ""
+
         while True:
-            rows = await ch_service.fetch_unique_ip_chunk(filters, CHUNK_SIZE, offset)
-            if not rows:
+            fetched_rows = await ch_service.fetch_unique_ip_chunk(filters, CHUNK_SIZE, after_ip)
+
+            if not fetched_rows:
                 break
-            fetched = len(rows)
+
+            fetched = len(fetched_rows)
+            after_ip = fetched_rows[-1]["ip_address"]
+
+            rows = fetched_rows
+
             if exclude_ids:
                 excluded = await self.repo.find_excluded(exclude_ids, [r["ip_address"] for r in rows])
                 rows = [r for r in rows if r["ip_address"] not in excluded]
-            items = [item for item in (_blocked_row_to_item(r) for r in rows) if item]
-            inserted += len(items)
-            if inserted > MAX_SOURCE_ROWS:
-                raise ValueError(f"Выборка превысила лимит {MAX_SOURCE_ROWS} записей, уточните фильтры")
-            await self.repo.insert_items(list_id, version, _to_tuples(items))
+
+            tuples = await asyncio.to_thread(_rows_to_tuples, rows, _blocked_row_to_item)
+
+            await self.repo.insert_items(list_id, version, tuples)
             if fetched < CHUNK_SIZE:
                 break
-            offset += CHUNK_SIZE
+
 
     async def build_from_reputation_rows(self, list_id: int, version: int, rows: list[dict],
                                          exclude_ids: list[int]) -> None:
@@ -264,8 +296,9 @@ class FeedListService:
             if exclude_ids:
                 excluded = await self.repo.find_excluded(exclude_ids, [r["ip_address"] for r in batch])
                 batch = [r for r in batch if r["ip_address"] not in excluded]
-            items = [item for item in (_reputation_row_to_item(r) for r in batch) if item]
-            await self.repo.insert_items(list_id, version, _to_tuples(items))
+
+            tuples = await asyncio.to_thread(_rows_to_tuples, batch, _reputation_row_to_item)
+            await self.repo.insert_items(list_id, version, tuples)
 
     async def build_from_reputation_snapshot(self, list_id: int, version: int, reputation_service, filters,
                                              exclude_ids: list[int]) -> None:
@@ -300,11 +333,13 @@ class FeedListService:
             seq += len(rows)
             if seq > MAX_SOURCE_ROWS:
                 raise ValueError(f"Выборка превысила лимит {MAX_SOURCE_ROWS} записей, уточните фильтры")
-            await self.repo.add_search_rows(
-                search_id, seq - len(rows), [json.dumps(r, ensure_ascii=False, default=str) for r in rows],
-            )
+
+            payload = await asyncio.to_thread(_rows_to_json, rows)
+            await self.repo.add_search_rows(search_id, seq - len(rows), payload)
+
             if fetched < CHUNK_SIZE:
                 break
+
             offset += CHUNK_SIZE
 
         await self.repo.finish_search_session(search_id, seq)
@@ -339,8 +374,11 @@ class FeedListService:
             rows = await self.repo.get_search_rows(search_id, seq, CHUNK_SIZE)
             if not rows:
                 raise ValueError("Результат поиска устарел, список не создан")
-            items = [item for item in (row_to_item(json.loads(raw)) for raw in rows) if item]
-            await self.repo.insert_items(list_id, version, _to_tuples(items))
+
+            tuples = await asyncio.to_thread(
+                _rows_to_tuples, rows, lambda raw: row_to_item(json.loads(raw))
+            )
+            await self.repo.insert_items(list_id, version, tuples)
             seq += len(rows)
 
     async def build_from_reputation_session(self, list_id: int, version: int, owner: str, search_id: str) -> None:
