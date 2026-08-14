@@ -82,7 +82,7 @@ def _json_default(value):
 @router.get("/")
 async def list_feed_lists(
         search: Optional[str] = Query(None, max_length=200),
-        status: Optional[str] = Query(None, pattern="^(creating|active|archived|failed)$"),
+        status: Optional[str] = Query(None, pattern="^(creating|pending_sync|active|archived|failed|sync_failed)$"),
         page: int = Query(1, ge=1),
         page_size: int = Query(50, ge=1, le=500),
         service: FeedListService = Depends(get_feed_list_service),
@@ -252,8 +252,8 @@ async def set_feed_list_status(
 ):
     _require_db(service)
     meta = await _get_list_or_404(service, list_id)
-    if meta["status"] == "creating":
-        raise HTTPException(status_code=409, detail="Список ещё создаётся")
+    if meta["status"] not in ("active", "archived"):
+        raise HTTPException(status_code=409, detail="Список ещё не готов, смена статуса недоступна")
     row = await service.repo.set_status(list_id, body.status)
     logger.info(
         "action=feed_list_status_changed id=%d status=%s user=%s",
@@ -272,6 +272,6 @@ async def delete_feed_list(
     meta = await _get_list_or_404(service, list_id)
     if meta["status"] == "creating":
         raise HTTPException(status_code=409, detail="Список ещё создаётся, дождитесь завершения")
-    await service.repo.delete_list(list_id)
+    await service.delete_list(list_id)
     logger.info("action=feed_list_deleted id=%d user=%s", list_id, _user_key(user))
     return {"ok": True}

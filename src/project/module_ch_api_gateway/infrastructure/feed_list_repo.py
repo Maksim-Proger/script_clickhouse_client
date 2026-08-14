@@ -5,6 +5,7 @@ from typing import Optional
 
 import asyncpg
 
+from datetime import datetime
 from project.module_ch_api_gateway.infrastructure.db import DatabaseManager
 
 logger = logging.getLogger("ch-api-gateway.feed_lists")
@@ -73,11 +74,15 @@ class FeedListRepository:
             return await conn.fetchrow(
                 """
                 UPDATE feed_lists l
-                SET status     = 'active',
-                    item_count = (SELECT count(*) FROM feed_list_items i
-                                  WHERE i.list_id = l.id AND i.version = l.version),
-                    updated_at = now(),
-                    last_error = NULL
+                SET status            = 'pending_sync',
+                    item_count        = (SELECT count(*) FROM feed_list_items i
+                                         WHERE i.list_id = l.id AND i.version = l.version),
+                    updated_at        = now(),
+                    last_error        = NULL,
+                    mirror_cursor     = NULL,
+                    mirror_updated_at = NULL,
+                    sync_attempts     = 0,
+                    next_attempt_at   = now()
                 WHERE l.id = $1
                 RETURNING *
                 """,
@@ -112,6 +117,58 @@ class FeedListRepository:
                 )
             return len(rows)
 
+    async def get_lists_for_mirror_sync(self, limit: int) -> list[asyncpg.Record]:
+        async with self.db.pool.acquire() as conn:
+            return await conn.fetch(
+                """
+                SELECT id, version, item_count, mirror_cursor, mirror_updated_at, sync_attempts
+                FROM feed_lists
+                WHERE status = 'pending_sync'
+                  AND (next_attempt_at IS NULL OR next_attempt_at <= now())
+                ORDER BY next_attempt_at NULLS FIRST
+                LIMIT $1
+                """,
+                limit,
+            )
+
+    async def start_mirror_sync(self, list_id: int, mirror_updated_at: datetime) -> None:
+        async with self.db.pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE feed_lists SET mirror_updated_at = $2, mirror_cursor = NULL WHERE id = $1",
+                list_id, mirror_updated_at,
+            )
+
+    async def save_mirror_cursor(self, list_id: int, cursor: str) -> None:
+        async with self.db.pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE feed_lists SET mirror_cursor = $2 WHERE id = $1",
+                list_id, cursor,
+            )
+
+    async def schedule_mirror_retry(self, list_id: int, error: str, attempts: int, delay_minutes: int) -> None:
+        async with self.db.pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE feed_lists SET sync_attempts = $2, last_error = $3, "
+                "next_attempt_at = now() + make_interval(mins => $4), updated_at = now() "
+                "WHERE id = $1",
+                list_id, attempts, error[:1000], delay_minutes,
+            )
+
+    async def mark_sync_failed(self, list_id: int, error: str, attempts: int) -> None:
+        async with self.db.pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE feed_lists SET status = 'sync_failed', sync_attempts = $2, "
+                "last_error = $3, next_attempt_at = NULL, updated_at = now() WHERE id = $1",
+                list_id, attempts, error[:1000],
+            )
+
+    async def activate_list(self, list_id: int) -> Optional[asyncpg.Record]:
+        async with self.db.pool.acquire() as conn:
+            return await conn.fetchrow(
+                "UPDATE feed_lists SET status = 'active', last_error = NULL, "
+                "next_attempt_at = NULL, updated_at = now() WHERE id = $1 RETURNING *",
+                list_id,
+            )
 
     async def list_catalog(
             self,
@@ -164,8 +221,12 @@ class FeedListRepository:
                 list_id, version, page_size, (page - 1) * page_size,
             )
 
-    async def iter_items(self, list_id: int, version: int, chunk_size: int = 50_000):
-        last_value = ""
+    async def iter_items(self,
+                         list_id: int,
+                         version: int,
+                         chunk_size: int = 50_000,
+                         after_value: str = ""):
+        last_value = after_value
         while True:
             async with self.db.pool.acquire() as conn:
                 rows = await conn.fetch(

@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from project.module_ch_api_gateway.infrastructure.feed_list_mirror_client import FeedListMirrorClient
 from project.module_ch_api_gateway.infrastructure.feed_list_repo import FeedListRepository
 
 logger = logging.getLogger("ch-api-gateway.feed_lists")
@@ -20,6 +21,12 @@ EXCLUDE_BATCH = 10_000
 SEARCH_TTL_MINUTES = 15
 SEARCH_SESSIONS_PER_USER = 10
 CLEANUP_INTERVAL = 60
+
+MIRROR_SYNC_INTERVAL = 15
+MIRROR_SYNC_BATCH = 5
+MIRROR_COUNT_RETRY_DELAY = 2.0
+MIRROR_BACKOFF_MINUTES = (1, 2, 5, 10, 30)
+MIRROR_MAX_ATTEMPTS = 10
 
 _DT_FORMATS = ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d")
 
@@ -67,6 +74,32 @@ def _rows_to_tuples(rows: list, row_to_item) -> list[tuple]:
 
 def _rows_to_json(rows: list[dict]) -> list[str]:
     return [json.dumps(r, ensure_ascii=False, default=str) for r in rows]
+
+def _mirror_range(value: str, value_type: str) -> tuple[int, int]:
+    if value_type == "cidr":
+        net = ipaddress.ip_network(value, strict=False)
+        return int(net.network_address), int(net.broadcast_address)
+    addr = int(ipaddress.ip_address(value))
+    return addr, addr
+
+
+def _items_to_mirror_rows(rows: list, list_id: int, version: int, updated_at) -> list[tuple]:
+    return [
+        (
+            list_id,
+            version,
+            r["value"],
+            r["value_type"],
+            *_mirror_range(r["value"], r["value_type"]),
+            updated_at,
+        )
+        for r in rows
+    ]
+
+
+def _mirror_backoff_minutes(attempts: int) -> int:
+    idx = min(attempts, len(MIRROR_BACKOFF_MINUTES)) - 1
+    return MIRROR_BACKOFF_MINUTES[idx]
 
 def _reputation_row_to_item(row: dict) -> Optional[dict]:
     ip = row.get("ip_address")
@@ -151,8 +184,11 @@ def build_items_from_values(values: list[str]) -> list[tuple]:
 
 
 class FeedListService:
-    def __init__(self, repo: FeedListRepository):
+    def __init__(self,
+                 repo: FeedListRepository,
+                 mirror: FeedListMirrorClient):
         self.repo = repo
+        self.mirror = mirror
 
     @property
     def is_available(self) -> bool:
@@ -175,6 +211,69 @@ class FeedListService:
             raise ValueError(f"Списки не активны и не могут применяться как исключения: {', '.join(inactive)}")
 
         return [{"id": r["id"], "version": r["version"], "name": r["name"]} for r in rows]
+
+    async def sync_mirror(self, row) -> bool:
+        list_id, version = row["id"], row["version"]
+        cursor = row["mirror_cursor"]
+        updated_at = row["mirror_updated_at"]
+
+        try:
+            if cursor is None:
+                await self.mirror.clear_version(list_id, version)
+                updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                await self.repo.start_mirror_sync(list_id, updated_at)
+                cursor = ""
+
+            host = self.mirror.pick_write_host()
+
+            async for chunk in self.repo.iter_items(list_id, version, after_value=cursor):
+                token = f"{list_id}:{version}:{cursor}"
+                mirror_rows = await asyncio.to_thread(
+                    _items_to_mirror_rows, chunk, list_id, version, updated_at
+                )
+                await self.mirror.insert_rows(host, mirror_rows, token)
+                cursor = chunk[-1]["value"]
+                await self.repo.save_mirror_cursor(list_id, cursor)
+
+            ch_count = await self.mirror.count(list_id, version)
+            if ch_count != row["item_count"]:
+                await asyncio.sleep(MIRROR_COUNT_RETRY_DELAY)
+                ch_count = await self.mirror.count(list_id, version)
+
+            if ch_count != row["item_count"]:
+                raise ValueError(
+                    f"Зеркало собрано не полностью: в списке {row['item_count']}, "
+                    f"в ClickHouse {ch_count}"
+                )
+
+            await self.repo.activate_list(list_id)
+            logger.info(
+                "action=feed_list_mirror_synced id=%d version=%d rows=%d host=%s",
+                list_id, version, ch_count, host,
+            )
+            return True
+
+        except Exception as e:
+            attempts = row["sync_attempts"] + 1
+            if attempts >= MIRROR_MAX_ATTEMPTS:
+                await self.repo.mark_sync_failed(list_id, str(e), attempts)
+                logger.error(
+                    "action=feed_list_mirror_gave_up id=%d attempts=%d error=%s",
+                    list_id, attempts, str(e),
+                )
+            else:
+                delay = _mirror_backoff_minutes(attempts)
+                await self.repo.schedule_mirror_retry(list_id, str(e), attempts, delay)
+                logger.warning(
+                    "action=feed_list_mirror_attempt_failed id=%d attempts=%d "
+                    "retry_in_min=%d error=%s",
+                    list_id, attempts, delay, str(e),
+                )
+            return False
+
+    async def delete_list(self, list_id: int) -> None:
+        await self.repo.delete_list(list_id)
+        await self.mirror.delete_list(list_id)
 
     async def create_manual(self, name: str, description: str, created_by: str, values: list[str]) -> dict:
         items = build_items_from_values(values)
@@ -433,3 +532,17 @@ async def search_cleanup_loop(repo: FeedListRepository, interval: int = CLEANUP_
             break
         except Exception as e:
             logger.error("action=search_cleanup_error error=%s", str(e))
+
+async def mirror_sync_loop(service: "FeedListService", interval: int = MIRROR_SYNC_INTERVAL) -> None:
+    while True:
+        try:
+            await asyncio.sleep(interval)
+            if not service.is_available:
+                continue
+            rows = await service.repo.get_lists_for_mirror_sync(MIRROR_SYNC_BATCH)
+            for row in rows:
+                await service.sync_mirror(row)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.error("action=mirror_sync_loop_error error=%s", str(e))

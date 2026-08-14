@@ -92,6 +92,12 @@ CREATE_FEED_LIST_ITEMS_INDEX = """
 CREATE INDEX IF NOT EXISTS idx_feed_list_items_list_version ON feed_list_items (list_id, version);
 """
 
+CREATE_FEED_LISTS_SYNC_INDEX = """
+CREATE INDEX IF NOT EXISTS idx_feed_lists_pending_sync
+    ON feed_lists (next_attempt_at)
+    WHERE status = 'pending_sync';
+"""
+
 CREATE_FEED_LIST_ITEMS_NET_INDEX = """
 CREATE INDEX IF NOT EXISTS idx_feed_list_items_net ON feed_list_items USING gist (value_net inet_ops);
 """
@@ -137,6 +143,10 @@ UPGRADE_FEED_TABLES = [
     "ALTER TABLE feed_lists ALTER COLUMN status SET DEFAULT 'creating'",
     "ALTER TABLE feed_list_items ADD COLUMN IF NOT EXISTS value_net INET",
     "UPDATE feed_list_items SET value_net = value::inet WHERE value_net IS NULL",
+    "ALTER TABLE feed_lists ADD COLUMN IF NOT EXISTS mirror_cursor VARCHAR(64)",
+    "ALTER TABLE feed_lists ADD COLUMN IF NOT EXISTS mirror_updated_at TIMESTAMP",
+    "ALTER TABLE feed_lists ADD COLUMN IF NOT EXISTS sync_attempts INT NOT NULL DEFAULT 0",
+    "ALTER TABLE feed_lists ADD COLUMN IF NOT EXISTS next_attempt_at TIMESTAMPTZ",
     """
     DO $$
     BEGIN
@@ -229,6 +239,7 @@ class DatabaseManager:
             await conn.execute(CREATE_FEED_LIST_ITEMS_NET_INDEX)
             await conn.execute(CREATE_SEARCH_SESSIONS_TABLE)
             await conn.execute(CREATE_SEARCH_SESSION_ROWS_TABLE)
+            await conn.execute(CREATE_FEED_LISTS_SYNC_INDEX)
             for statement in UPGRADE_SEARCH_TABLES:
                 await conn.execute(statement)
 
