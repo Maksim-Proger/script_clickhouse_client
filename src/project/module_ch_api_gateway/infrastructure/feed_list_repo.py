@@ -177,7 +177,7 @@ class FeedListRepository:
             page: int,
             page_size: int,
     ) -> tuple[list[asyncpg.Record], int]:
-        conditions, args = [], []
+        conditions, args = ["status <> 'deleting'"], []
 
         if search:
             args.append(f"%{search}%")
@@ -199,12 +199,15 @@ class FeedListRepository:
 
     async def get_list(self, list_id: int) -> Optional[asyncpg.Record]:
         async with self.db.pool.acquire() as conn:
-            return await conn.fetchrow("SELECT * FROM feed_lists WHERE id = $1", list_id)
+            return await conn.fetchrow(
+                "SELECT * FROM feed_lists WHERE id = $1 AND status <> 'deleting'", list_id
+            )
 
     async def get_lists_by_ids(self, list_ids: list[int]) -> list[asyncpg.Record]:
         async with self.db.pool.acquire() as conn:
             return await conn.fetch(
-                "SELECT id, name, version, status, item_count FROM feed_lists WHERE id = ANY($1::int[])",
+                "SELECT id, name, version, status, item_count FROM feed_lists "
+                "WHERE id = ANY($1::int[]) AND status <> 'deleting'",
                 list_ids,
             )
 
@@ -269,10 +272,48 @@ class FeedListRepository:
                 list_id, status,
             )
 
-    async def delete_list(self, list_id: int) -> bool:
+    async def mark_for_deletion(self, list_id: int, grace_minutes: int) -> bool:
         async with self.db.pool.acquire() as conn:
-            result = await conn.execute("DELETE FROM feed_lists WHERE id = $1", list_id)
+            result = await conn.execute(
+                "UPDATE feed_lists SET status = 'deleting', sync_attempts = 0, last_error = NULL, "
+                "next_attempt_at = now() + make_interval(mins => $2), updated_at = now() "
+                "WHERE id = $1",
+                list_id, grace_minutes,
+            )
             return result.split()[-1] == "1"
+
+    async def get_lists_for_deletion(self, limit: int) -> list[asyncpg.Record]:
+        async with self.db.pool.acquire() as conn:
+            return await conn.fetch(
+                """
+                SELECT id, version, sync_attempts
+                FROM feed_lists
+                WHERE status = 'deleting' AND next_attempt_at <= now()
+                ORDER BY next_attempt_at
+                LIMIT $1
+                """,
+                limit,
+            )
+
+    async def delete_items_chunk(self, list_id: int, limit: int) -> int:
+        async with self.db.pool.acquire() as conn:
+            result = await conn.execute(
+                "DELETE FROM feed_list_items WHERE ctid IN ("
+                "SELECT ctid FROM feed_list_items WHERE list_id = $1 LIMIT $2"
+                ")",
+                list_id, limit,
+            )
+            return int(result.split()[-1])
+
+    async def continue_deletion(self, list_id: int) -> None:
+        async with self.db.pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE feed_lists SET next_attempt_at = now() WHERE id = $1", list_id
+            )
+
+    async def purge_list(self, list_id: int) -> None:
+        async with self.db.pool.acquire() as conn:
+            await conn.execute("DELETE FROM feed_lists WHERE id = $1", list_id)
 
     async def delete_items(self, list_id: int, version: int) -> int:
         async with self.db.pool.acquire() as conn:

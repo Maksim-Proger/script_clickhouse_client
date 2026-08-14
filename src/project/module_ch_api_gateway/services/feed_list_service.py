@@ -22,6 +22,10 @@ SEARCH_TTL_MINUTES = 15
 SEARCH_SESSIONS_PER_USER = 10
 CLEANUP_INTERVAL = 60
 
+DELETION_GRACE_MINUTES = 60
+DELETION_CHUNK = 50_000
+DELETION_CHUNKS_PER_TICK = 5
+
 MIRROR_SYNC_INTERVAL = 15
 MIRROR_SYNC_BATCH = 5
 MIRROR_COUNT_RETRY_DELAY = 2.0
@@ -271,9 +275,32 @@ class FeedListService:
                 )
             return False
 
+    async def process_deletion(self, row) -> None:
+        list_id, version = row["id"], row["version"]
+        try:
+            await self.mirror.clear_version(list_id, version)
+
+            for _ in range(DELETION_CHUNKS_PER_TICK):
+                deleted = await self.repo.delete_items_chunk(list_id, DELETION_CHUNK)
+                if deleted < DELETION_CHUNK:
+                    await self.repo.purge_list(list_id)
+                    logger.info("action=feed_list_purged id=%d version=%d", list_id, version)
+                    return
+
+            await self.repo.continue_deletion(list_id)
+            logger.info("action=feed_list_purge_continue id=%d", list_id)
+
+        except Exception as e:
+            attempts = row["sync_attempts"] + 1
+            delay = _mirror_backoff_minutes(attempts)
+            await self.repo.schedule_mirror_retry(list_id, str(e), attempts, delay)
+            logger.warning(
+                "action=feed_list_purge_failed id=%d attempts=%d retry_in_min=%d error=%s",
+                list_id, attempts, delay, str(e),
+            )
+
     async def delete_list(self, list_id: int) -> None:
-        await self.repo.delete_list(list_id)
-        await self.mirror.delete_list(list_id)
+        await self.repo.mark_for_deletion(list_id, DELETION_GRACE_MINUTES)
 
     async def create_manual(self, name: str, description: str, created_by: str, values: list[str]) -> dict:
         items = build_items_from_values(values)
@@ -539,9 +566,15 @@ async def mirror_sync_loop(service: "FeedListService", interval: int = MIRROR_SY
             await asyncio.sleep(interval)
             if not service.is_available:
                 continue
+
             rows = await service.repo.get_lists_for_mirror_sync(MIRROR_SYNC_BATCH)
             for row in rows:
                 await service.sync_mirror(row)
+
+            deletions = await service.repo.get_lists_for_deletion(MIRROR_SYNC_BATCH)
+            for row in deletions:
+                await service.process_deletion(row)
+
         except asyncio.CancelledError:
             break
         except Exception as e:

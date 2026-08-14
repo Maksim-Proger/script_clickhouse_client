@@ -22,10 +22,6 @@ _DROP_PARTITION_SQL = (
     "DROP PARTITION (%(list_id)s, %(version)s)"
 )
 
-_DELETE_LIST_SQL = (
-    "ALTER TABLE feedgen.feed_list_mirror_data DELETE WHERE list_id = %(list_id)s"
-)
-
 
 class FeedListMirrorClient:
     def __init__(self, cfg: dict):
@@ -81,12 +77,6 @@ class FeedListMirrorClient:
                 host,
                 _DROP_PARTITION_SQL,
                 {"list_id": list_id, "version": version},
-            )
-
-    async def delete_list(self, list_id: int) -> None:
-        for host in self._cfg["write_hosts"]:
-            await asyncio.to_thread(
-                self._execute_sync, host, _DELETE_LIST_SQL, {"list_id": list_id}
             )
 
 

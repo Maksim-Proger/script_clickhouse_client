@@ -270,8 +270,11 @@ async def delete_feed_list(
 ):
     _require_db(service)
     meta = await _get_list_or_404(service, list_id)
-    if meta["status"] == "creating":
-        raise HTTPException(status_code=409, detail="Список ещё создаётся, дождитесь завершения")
+    if meta["status"] in ("creating", "pending_sync"):
+        raise HTTPException(
+            status_code=409,
+            detail="Список ещё обрабатывается, дождитесь завершения",
+        )
     await service.delete_list(list_id)
     logger.info("action=feed_list_deleted id=%d user=%s", list_id, _user_key(user))
     return {"ok": True}
