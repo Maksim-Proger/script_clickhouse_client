@@ -1,6 +1,7 @@
 import logging
 import re
 from datetime import datetime, timedelta
+from typing import Optional
 
 from project.module_ch_api_gateway.models.filters import CHReadFilters, CHSimpleFilters, PeriodFilter
 from project.module_ch_api_gateway.infrastructure.clickhouse_client import ClickHouseClient
@@ -32,6 +33,20 @@ def _safe_date(value: str) -> str:
         raise ValueError(f"Некорректное значение даты: {value!r}")
     return value
 
+def build_exclude_conditions(exclude_lists: Optional[list[dict]]) -> list[str]:
+    if not exclude_lists:
+        return []
+    pairs = ", ".join(f"({int(l['id'])}, {int(l['version'])})" for l in exclude_lists)
+    scope = f"(list_id, version) IN ({pairs})"
+    return [
+        f"ip_address NOT IN ("
+        f"SELECT value FROM `feedgen`.`feed_list_mirror` "
+        f"WHERE {scope} AND value_type = 'ip')",
+        f"NOT arrayExists("
+        f"r -> IPv4StringToNumOrDefault(ip_address) BETWEEN r.1 AND r.2, "
+        f"(SELECT groupArray((range_start, range_end)) FROM `feedgen`.`feed_list_mirror` "
+        f"WHERE {scope} AND value_type = 'cidr'))",
+    ]
 
 def apply_default_period(filters: CHReadFilters, days: int) -> None:
     if filters.blocked_at:
@@ -236,10 +251,15 @@ class ClickHouseService:
         result = await self.client.fetch_json(query)
         return result.get("data", [])
 
-    async def fetch_unique_ip_chunk(self, filters: CHReadFilters, limit: int, after_ip: str = "") -> list:
+    async def fetch_unique_ip_chunk(self,
+                                    filters: CHReadFilters,
+                                    limit: int,
+                                    after_ip: str = "",
+                                    exclude_lists: Optional[list[dict]] = None) -> list:
         conditions = self._build_conditions(filters)
         if after_ip:
             conditions.append(f"ip_address > '{_safe_ip(after_ip)}'")
+        conditions.extend(build_exclude_conditions(exclude_lists))
         where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
         query = (
             f"SELECT ip_address, min(blocked_at) as first_detected, max(blocked_at) as last_detected, "

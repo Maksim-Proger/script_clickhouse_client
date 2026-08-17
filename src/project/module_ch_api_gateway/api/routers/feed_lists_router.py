@@ -121,7 +121,6 @@ async def create_feed_list(
             filters = body.reputation_filters or ReputationFilters()
             filters.only_ip = False
             exclude_lists = await resolve_exclusions(request, filters.exclude_list_ids)
-            exclude_ids = filters.exclude_list_ids
 
             if filters.search_id:
                 search_id = filters.search_id
@@ -135,7 +134,7 @@ async def create_feed_list(
 
                 async def build(list_id, version):
                     await service.build_from_reputation_snapshot(
-                        list_id, version, reputation_service, filters, exclude_ids,
+                        list_id, version, reputation_service, filters, exclude_lists,
                     )
 
             return await service.create_background(
@@ -147,11 +146,10 @@ async def create_feed_list(
         apply_default_period(filters, DEFAULT_PERIOD_DAYS)
         _check_period_limit(filters)
         exclude_lists = await resolve_exclusions(request, filters.exclude_list_ids)
-        exclude_ids = filters.exclude_list_ids
         check_source_size(await ch_service.count_unique_ips(filters))
 
         async def build(list_id, version):
-            await service.build_from_ch(list_id, version, ch_service, filters, exclude_ids)
+            await service.build_from_ch(list_id, version, ch_service, filters, exclude_lists)
 
         return await service.create_background(
             body.name, body.description, created_by, "blocked_ips",

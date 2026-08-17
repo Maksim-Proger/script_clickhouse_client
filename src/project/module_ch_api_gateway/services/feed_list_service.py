@@ -17,7 +17,6 @@ MAX_MANUAL_VALUES = 1_000_000
 DEFAULT_PERIOD_DAYS = 7
 
 CHUNK_SIZE = 50_000
-EXCLUDE_BATCH = 10_000
 SEARCH_TTL_MINUTES = 15
 SEARCH_SESSIONS_PER_USER = 10
 CLEANUP_INTERVAL = 60
@@ -390,55 +389,58 @@ class FeedListService:
                             version: int,
                             ch_service,
                             filters,
-                            exclude_ids: list[int]) -> None:
+                            exclude_lists: Optional[list[dict]] = None) -> None:
         after_ip = ""
 
         while True:
-            fetched_rows = await ch_service.fetch_unique_ip_chunk(filters, CHUNK_SIZE, after_ip)
-
-            if not fetched_rows:
+            rows = await ch_service.fetch_unique_ip_chunk(
+                filters, CHUNK_SIZE, after_ip, exclude_lists,
+            )
+            if not rows:
                 break
 
-            fetched = len(fetched_rows)
-            after_ip = fetched_rows[-1]["ip_address"]
-
-            rows = fetched_rows
-
-            if exclude_ids:
-                excluded = await self.repo.find_excluded(exclude_ids, [r["ip_address"] for r in rows])
-                rows = [r for r in rows if r["ip_address"] not in excluded]
+            fetched = len(rows)
+            after_ip = rows[-1]["ip_address"]
 
             tuples = await asyncio.to_thread(_rows_to_tuples, rows, _blocked_row_to_item)
-
             await self.repo.insert_items(list_id, version, tuples)
+
             if fetched < CHUNK_SIZE:
                 break
 
+    async def build_from_reputation_rows(self,
+                                         list_id: int,
+                                         version: int,
+                                         rows: list[dict]) -> None:
+        if not rows:
+            return
+        tuples = await asyncio.to_thread(_rows_to_tuples, rows, _reputation_row_to_item)
+        await self.repo.insert_items(list_id, version, tuples)
 
-    async def build_from_reputation_rows(self, list_id: int, version: int, rows: list[dict],
-                                         exclude_ids: list[int]) -> None:
-        for start in range(0, len(rows), EXCLUDE_BATCH):
-            batch = rows[start:start + EXCLUDE_BATCH]
-            if exclude_ids:
-                excluded = await self.repo.find_excluded(exclude_ids, [r["ip_address"] for r in batch])
-                batch = [r for r in batch if r["ip_address"] not in excluded]
-
-            tuples = await asyncio.to_thread(_rows_to_tuples, batch, _reputation_row_to_item)
-            await self.repo.insert_items(list_id, version, tuples)
-
-    async def build_from_reputation_snapshot(self, list_id: int, version: int, reputation_service, filters,
-                                             exclude_ids: list[int]) -> None:
+    async def build_from_reputation_snapshot(self,
+                                             list_id: int,
+                                             version: int,
+                                             reputation_service,
+                                             filters,
+                                             exclude_lists: Optional[list[dict]] = None) -> None:
         offset = 0
         while True:
-            rows, fetched = await reputation_service.fetch_snapshot_chunk(filters, CHUNK_SIZE, offset)
+            rows, fetched = await reputation_service.fetch_snapshot_chunk(
+                filters, CHUNK_SIZE, offset, exclude_lists=exclude_lists,
+            )
             if fetched == 0:
                 break
-            await self.build_from_reputation_rows(list_id, version, rows, exclude_ids)
+            await self.build_from_reputation_rows(list_id, version, rows)
             if fetched < CHUNK_SIZE:
                 break
             offset += CHUNK_SIZE
 
-    async def build_search(self, owner: str, kind: str, filters, fetch_chunk, exclude_ids: list[int]) -> dict:
+    async def build_search(self,
+                           owner: str,
+                           kind: str,
+                           filters,
+                           fetch_chunk,
+                           exclude_ids: list[int]) -> dict:
         search_id = uuid.uuid4().hex
         await self.repo.evict_owner_sessions(owner, SEARCH_SESSIONS_PER_USER - 1)
         await self.repo.create_search_session(
@@ -472,7 +474,12 @@ class FeedListService:
         logger.info("action=search_built search_id=%s kind=%s total=%d owner=%s", search_id, kind, seq, owner)
         return {"search_id": search_id, "total": seq}
 
-    async def build_ch_search(self, owner: str, ch_service, filters, exclude_ids: list[int], kind: str) -> dict:
+    async def build_ch_search(self,
+                              owner: str,
+                              ch_service,
+                              filters,
+                              exclude_ids: list[int],
+                              kind: str) -> dict:
         async def fetch_chunk(limit, offset):
             if kind == "export":
                 rows = await ch_service.fetch_export_chunk(filters, limit, offset)
@@ -482,7 +489,10 @@ class FeedListService:
 
         return await self.build_search(owner, kind, filters, fetch_chunk, exclude_ids)
 
-    async def build_reputation_search(self, owner: str, reputation_service, filters,
+    async def build_reputation_search(self,
+                                      owner: str,
+                                      reputation_service,
+                                      filters,
                                       exclude_ids: list[int]) -> dict:
         async def fetch_chunk(limit, offset):
             return await reputation_service.fetch_snapshot_chunk(filters, limit, offset)
