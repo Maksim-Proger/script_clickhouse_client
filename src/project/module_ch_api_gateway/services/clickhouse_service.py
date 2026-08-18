@@ -33,6 +33,7 @@ def _safe_date(value: str) -> str:
         raise ValueError(f"Некорректное значение даты: {value!r}")
     return value
 
+
 def build_exclude_conditions(exclude_lists: Optional[list[dict]]) -> list[str]:
     if not exclude_lists:
         return []
@@ -47,6 +48,7 @@ def build_exclude_conditions(exclude_lists: Optional[list[dict]]) -> list[str]:
         f"(SELECT groupArray((range_start, range_end)) FROM `feedgen`.`feed_list_mirror` "
         f"WHERE {scope} AND value_type = 'cidr'))",
     ]
+
 
 def apply_default_period(filters: CHReadFilters, days: int) -> None:
     if filters.blocked_at:
@@ -198,8 +200,9 @@ class ClickHouseService:
             return []
 
     @staticmethod
-    def _where_clause(filters: CHReadFilters) -> str:
+    def _where_clause(filters: CHReadFilters, exclude_lists: Optional[list[dict]] = None) -> str:
         conditions = ClickHouseService._build_conditions(filters)
+        conditions.extend(build_exclude_conditions(exclude_lists))
         return f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
     async def _count(self, query: str) -> int:
@@ -222,17 +225,26 @@ class ClickHouseService:
             f"FROM `feedgen`.`blocked_ips` {self._where_clause(filters)}"
         )
 
-    async def fetch_read_chunk(self, filters: CHReadFilters, limit: int, offset: int) -> list:
+    async def fetch_read_chunk(self,
+                               filters: CHReadFilters,
+                               limit: int,
+                               offset: int,
+                               exclude_lists: Optional[list[dict]] = None) -> list:
         query = (
-            f"SELECT * FROM `feedgen`.`blocked_ips` {self._where_clause(filters)} "
+            f"SELECT * FROM `feedgen`.`blocked_ips` {self._where_clause(filters, exclude_lists)} "
             f"ORDER BY blocked_at DESC, ip_address, source, profile "
             f"LIMIT {limit} OFFSET {offset}"
         )
         result = await self.client.fetch_json(query)
         return result.get("data", [])
 
-    async def fetch_export_chunk(self, filters: CHReadFilters, limit: int, offset: int) -> list:
-        where_clause = self._where_clause(filters)
+    async def fetch_export_chunk(self,
+                                 filters: CHReadFilters,
+                                 limit: int,
+                                 offset: int,
+                                 exclude_lists: Optional[list[dict]] = None) -> list:
+
+        where_clause = self._where_clause(filters, exclude_lists)
         if filters.unique_ips:
             query = (
                 f"SELECT ip_address, max(blocked_at) as last_detected, min(blocked_at) as first_detected, "
@@ -271,4 +283,3 @@ class ClickHouseService:
         )
         result = await self.client.fetch_json(query)
         return result.get("data", [])
-

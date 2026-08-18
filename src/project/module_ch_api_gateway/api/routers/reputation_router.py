@@ -35,10 +35,12 @@ async def get_reputation(
         user=Depends(get_current_user),
 ):
     f = filters or ReputationFilters()
-    await resolve_exclusions(request, f.exclude_list_ids)
+    exclude_lists = await resolve_exclusions(request, f.exclude_list_ids)
     _require_db(request, f)
     try:
-        return await service.get_reputation(f, _user_key(user), request.app.state.feed_list_service)
+        return await service.get_reputation(
+            f, _user_key(user), request.app.state.feed_list_service, exclude_lists,
+        )
     except SessionExpiredError:
         raise HTTPException(status_code=410, detail="Результат поиска устарел, повторите запрос")
     except SourceUnavailableError:
@@ -55,14 +57,14 @@ async def export_reputation(
         user=Depends(get_current_user),
 ):
     f = filters or ReputationFilters()
-    await resolve_exclusions(request, f.exclude_list_ids)
+    exclude_lists = await resolve_exclusions(request, f.exclude_list_ids)
     _require_db(request, f)
 
     feed_service = request.app.state.feed_list_service
     owner = _user_key(user)
 
     try:
-        search_id, total = await service.start_export(f, owner, feed_service)
+        search_id, total = await service.start_export(f, owner, feed_service, exclude_lists)
     except SessionExpiredError:
         raise HTTPException(status_code=410, detail="Результат поиска устарел, повторите запрос")
     except SourceUnavailableError:

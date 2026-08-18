@@ -1,5 +1,3 @@
-import asyncio
-import ipaddress
 import logging
 from typing import Optional
 
@@ -19,16 +17,6 @@ _ITEM_SELECT = (
     "value, value_type, score, risk_level, asn, country, "
     "source, first_seen, last_seen, created_at"
 )
-
-
-def _parse_addrs(ips: list[str]) -> list:
-    addrs = []
-    for ip in ips:
-        try:
-            addrs.append(ipaddress.ip_address(ip))
-        except ValueError:
-            pass
-    return addrs
 
 
 class FeedListRepository:
@@ -246,24 +234,6 @@ class FeedListRepository:
                 return
             yield rows
             last_value = rows[-1]["value"]
-
-    async def find_excluded(self, list_ids: list[int], ips: list[str]) -> set[str]:
-        addrs = await asyncio.to_thread(_parse_addrs, ips)
-        if not addrs:
-            return set()
-
-        async with self.db.pool.acquire() as conn:
-            rows = await conn.fetch(
-                """
-                SELECT DISTINCT host(b.ip) AS ip
-                FROM unnest($1::inet[]) AS b(ip)
-                JOIN feed_list_items i ON i.value_net >>= b.ip
-                JOIN feed_lists l ON l.id = i.list_id AND l.version = i.version
-                WHERE i.list_id = ANY($2::int[])
-                """,
-                addrs, list_ids,
-            )
-        return {r["ip"] for r in rows}
 
     async def set_status(self, list_id: int, status: str) -> Optional[asyncpg.Record]:
         async with self.db.pool.acquire() as conn:

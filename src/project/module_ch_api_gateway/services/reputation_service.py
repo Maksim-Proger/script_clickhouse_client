@@ -154,7 +154,12 @@ class ReputationService:
             env["search_id"] = search_id
         return env
 
-    async def get_reputation(self, filters: ReputationFilters, user: str, feed_service) -> dict:
+    async def get_reputation(self,
+                             filters: ReputationFilters,
+                             user: str,
+                             feed_service,
+                             exclude_lists: Optional[list[dict]] = None) -> dict:
+
         page, page_size = filters.page, filters.page_size
 
         try:
@@ -168,7 +173,7 @@ class ReputationService:
             if needs_session(filters):
                 check_source_size(await self.count_snapshot(filters))
                 built = await feed_service.build_reputation_search(
-                    user, self, filters, filters.exclude_list_ids,
+                    user, self, filters, exclude_lists,
                 )
                 result = await feed_service.get_search_page(user, built["search_id"], page, page_size)
                 return self._envelope(result["data"] if result else [], built["total"], page, page_size,
@@ -191,7 +196,11 @@ class ReputationService:
 
         return self._envelope(page_rows, total, page, page_size)
 
-    async def start_export(self, filters: ReputationFilters, user: str, feed_service) -> tuple:
+    async def start_export(self,
+                           filters: ReputationFilters,
+                           user: str,
+                           feed_service,
+                           exclude_lists: Optional[list[dict]] = None) -> tuple:
         try:
             if filters.search_id:
                 total = await feed_service.get_search_total(user, filters.search_id)
@@ -202,7 +211,7 @@ class ReputationService:
             if needs_session(filters):
                 check_source_size(await self.count_snapshot(filters))
                 built = await feed_service.build_reputation_search(
-                    user, self, filters, filters.exclude_list_ids,
+                    user, self, filters, exclude_lists,
                 )
                 return built["search_id"], built["total"]
 
