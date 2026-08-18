@@ -70,7 +70,7 @@ async def read_ch(
         try:
             check_source_size(await service.count_rows(f))
             built = await feed_service.build_ch_search(
-                _user_key(user), service, f, f.exclude_list_ids, kind="read",
+                _user_key(user), service, f, exclude_lists, kind="read",
             )
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
@@ -106,7 +106,7 @@ async def export_ch(
     else:
         try:
             check_source_size(await service.count_export_rows(f))
-            built = await feed_service.build_ch_search(owner, service, f, f.exclude_list_ids, kind="export")
+            built = await feed_service.build_ch_search(owner, service, f, exclude_lists, kind="export")
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         search_id = built["search_id"]

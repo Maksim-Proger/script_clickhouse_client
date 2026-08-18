@@ -118,6 +118,26 @@ document.addEventListener("DOMContentLoaded", () => {
         };
     }
 
+    function collectSaveListFilters() {
+        const exactDate = document.getElementById("saveListDate").value || null;
+        const rangeStart = document.getElementById("saveListDateFrom").value
+            ? document.getElementById("saveListDateFrom").value + " " + (document.getElementById("saveListTimeFrom").value || "00:00:00")
+            : null;
+        const rangeEnd = document.getElementById("saveListDateTo").value
+            ? document.getElementById("saveListDateTo").value + " " + (document.getElementById("saveListTimeTo").value || "23:59:59")
+            : null;
+
+        return {
+            blocked_at: exactDate,
+            period: (rangeStart || rangeEnd) ? { from: rangeStart, to: rangeEnd } : null,
+            ip: document.getElementById("saveListIP").value.trim() || null,
+            source: document.getElementById("saveListSource").value.trim() || null,
+            profile: document.getElementById("saveListProfile").value.trim() || null,
+            exclude_list_ids: currentFilters.exclude_list_ids || [],
+            unique_ips: true,
+        };
+    }
+
     function postCHRead(body) {
         return Auth.authFetch(`${Auth.API_BASE}/ch/read`, {
             method: "POST",
@@ -422,6 +442,16 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("btnSaveList").addEventListener("click", () => {
         document.getElementById("chListName").value = "";
         document.getElementById("chListDescription").value = "";
+
+        document.getElementById("saveListDate").value = currentFilters.blocked_at || "";
+        document.getElementById("saveListDateFrom").value = currentFilters.period?.from?.split(" ")[0] || "";
+        document.getElementById("saveListTimeFrom").value = currentFilters.period?.from?.split(" ")[1] || "";
+        document.getElementById("saveListDateTo").value = currentFilters.period?.to?.split(" ")[0] || "";
+        document.getElementById("saveListTimeTo").value = currentFilters.period?.to?.split(" ")[1] || "";
+        document.getElementById("saveListIP").value = currentFilters.ip || "";
+        document.getElementById("saveListSource").value = currentFilters.source || "";
+        document.getElementById("saveListProfile").value = currentFilters.profile || "";
+
         saveListDialog.showModal();
     });
 
@@ -439,7 +469,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 name,
                 description,
                 source_type: "blocked_ips",
-                blocked_ips_filters: { ...currentFilters, unique_ips: true },
+                blocked_ips_filters: collectSaveListFilters(),
             });
             alert(`Список "${created.name}" создаётся в фоне, статус можно смотреть в каталоге фид-листов`);
             saveListDialog.close();

@@ -2,7 +2,9 @@ import asyncio
 import ipaddress
 import json
 import logging
+from typing import Optional
 
+from project.module_ch_api_gateway.services.clickhouse_service import build_exclude_conditions
 from project.module_ch_api_gateway.models.filters import ReputationFilters
 from project.module_ch_api_gateway.services.feed_list_service import (
     CHUNK_SIZE,
@@ -40,7 +42,7 @@ def _safe_cidr(value: str) -> str:
     return f"{ipaddress.ip_address(v)}/32"
 
 
-def _build_where(filters: ReputationFilters) -> str:
+def _build_where(filters: ReputationFilters, exclude_lists: Optional[list[dict]] = None) -> str:
     conditions = [_LATEST_SNAPSHOT_PREDICATE]
 
     if filters.score_from is not None:
@@ -49,6 +51,8 @@ def _build_where(filters: ReputationFilters) -> str:
         conditions.append(f"score <= {float(filters.score_to)}")
     if filters.ip:
         conditions.append(f"isIPAddressInRange(ip_address, '{_safe_cidr(filters.ip)}')")
+
+    conditions.extend(build_exclude_conditions(exclude_lists))
 
     return "WHERE " + " AND ".join(conditions)
 
@@ -111,9 +115,13 @@ class ReputationService:
     async def _enrich(self, records: list[dict]) -> list[dict]:
         return await asyncio.to_thread(self.geoip_client.enrich_batch, records)
 
-    async def fetch_snapshot_chunk(self, filters: ReputationFilters, limit: int, offset: int,
-                                   enrich: bool = True) -> tuple[list[dict], int]:
-        where = _build_where(filters)
+    async def fetch_snapshot_chunk(self,
+                                   filters: ReputationFilters,
+                                   limit: int,
+                                   offset: int,
+                                   enrich: bool = True,
+                                   exclude_lists: Optional[list[dict]] = None) -> tuple[list[dict], int]:
+        where = _build_where(filters, exclude_lists)
         query = (
             f"SELECT {_SELECT_COLS} FROM feedgen.ip_reputation_snapshots "
             f"{where} ORDER BY score DESC, ip_address LIMIT {limit} OFFSET {offset}"
@@ -146,7 +154,12 @@ class ReputationService:
             env["search_id"] = search_id
         return env
 
-    async def get_reputation(self, filters: ReputationFilters, user: str, feed_service) -> dict:
+    async def get_reputation(self,
+                             filters: ReputationFilters,
+                             user: str,
+                             feed_service,
+                             exclude_lists: Optional[list[dict]] = None) -> dict:
+
         page, page_size = filters.page, filters.page_size
 
         try:
@@ -160,7 +173,7 @@ class ReputationService:
             if needs_session(filters):
                 check_source_size(await self.count_snapshot(filters))
                 built = await feed_service.build_reputation_search(
-                    user, self, filters, filters.exclude_list_ids,
+                    user, self, filters, exclude_lists,
                 )
                 result = await feed_service.get_search_page(user, built["search_id"], page, page_size)
                 return self._envelope(result["data"] if result else [], built["total"], page, page_size,
@@ -183,7 +196,11 @@ class ReputationService:
 
         return self._envelope(page_rows, total, page, page_size)
 
-    async def start_export(self, filters: ReputationFilters, user: str, feed_service) -> tuple:
+    async def start_export(self,
+                           filters: ReputationFilters,
+                           user: str,
+                           feed_service,
+                           exclude_lists: Optional[list[dict]] = None) -> tuple:
         try:
             if filters.search_id:
                 total = await feed_service.get_search_total(user, filters.search_id)
@@ -194,7 +211,7 @@ class ReputationService:
             if needs_session(filters):
                 check_source_size(await self.count_snapshot(filters))
                 built = await feed_service.build_reputation_search(
-                    user, self, filters, filters.exclude_list_ids,
+                    user, self, filters, exclude_lists,
                 )
                 return built["search_id"], built["total"]
 

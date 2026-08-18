@@ -12,11 +12,16 @@ from project.module_ch_api_gateway.infrastructure.clickhouse_client import Click
 from project.module_ch_api_gateway.infrastructure.db import DatabaseManager
 from project.module_ch_api_gateway.infrastructure.feed_list_repo import FeedListRepository
 from project.module_ch_api_gateway.infrastructure.nats_client import NatsInfrastructure
-from project.module_ch_api_gateway.services.feed_list_service import FeedListService, search_cleanup_loop
 from project.module_ch_api_gateway.services.state_service import StateService
 from project.module_ch_api_gateway.services.user_service import UserService
 from project.module_ch_api_gateway.infrastructure.geoip_client import GeoIPClient
 from project.module_ch_api_gateway.api.routers import reputation_router
+from project.module_ch_api_gateway.infrastructure.feed_list_mirror_client import FeedListMirrorClient
+from project.module_ch_api_gateway.services.feed_list_service import (
+    FeedListService,
+    search_cleanup_loop,
+    mirror_sync_loop,
+)
 
 logger = logging.getLogger("ch-api-gateway")
 
@@ -41,11 +46,13 @@ def create_app(config: dict) -> FastAPI:
 
         cleanup_task = asyncio.create_task(rate_limit_cleanup_loop(app.state))
         search_cleanup_task = asyncio.create_task(search_cleanup_loop(app.state.feed_list_service.repo))
+        mirror_sync_task = asyncio.create_task(mirror_sync_loop(app.state.feed_list_service))
         try:
             yield
         finally:
             cleanup_task.cancel()
             search_cleanup_task.cancel()
+            mirror_sync_task.cancel()
             app.state.user_service.stop_cleanup_loop()
             await app.state.nats_infra.close()
             logger.info("action=nats_disconnect status=success")
@@ -67,7 +74,8 @@ def create_app(config: dict) -> FastAPI:
     )
     app.state.user_service = UserService(app.state.db)
     app.state.state_service = StateService(app.state.db)
-    app.state.feed_list_service = FeedListService(FeedListRepository(app.state.db))
+    app.state.feed_list_mirror = FeedListMirrorClient(config["clickhouse"])
+    app.state.feed_list_service = FeedListService(FeedListRepository(app.state.db), app.state.feed_list_mirror)
 
     app.state.ch_client = ClickHouseClient(
         host=config["clickhouse"]["host"],

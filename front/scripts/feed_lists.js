@@ -68,7 +68,7 @@ async function loadLists(page = 1) {
         renderPagination(result.page || 1, result.total_pages || 1);
 
         clearTimeout(refreshTimer);
-        if (lists.some(l => l.status === "creating")) {
+        if (lists.some(l => l.status === "creating" || l.status === "pending_sync")) {
             refreshTimer = setTimeout(() => loadLists(currentPage), 4000);
         }
     } catch (e) {
@@ -103,18 +103,22 @@ function renderTable(lists) {
         let badge;
         if (l.status === "creating") {
             badge = `<span class="badge badge--creating">Создаётся</span>`;
+        } else if (l.status === "pending_sync") {
+            badge = `<span class="badge badge--creating">Синхронизация</span>`;
         } else if (l.status === "failed") {
             badge = `<span class="badge badge--failed" title="${escapeHtml(l.last_error)}">Ошибка</span>`;
-        } else if (l.status === "active") {
+        } else if (l.status === "sync_failed") {
+            badge = `<span class="badge badge--failed" title="${escapeHtml(l.last_error)}">Не синхронизирован</span>`;
+                } else if (l.status === "active") {
             badge = `<span class="badge badge--active">Активен</span>`;
         } else {
             badge = `<span class="badge badge--inactive">Архив</span>`;
         }
 
         let actions;
-        if (l.status === "creating") {
+        if (l.status === "creating" || l.status === "pending_sync") {
             actions = "";
-        } else if (l.status === "failed") {
+        } else if (l.status === "failed" || l.status === "sync_failed") {
             actions = `<button class="btn btn--danger btn--small" onclick="window.deleteList(${l.id})">Удалить</button>`;
         } else {
             const toggleAction = l.status === "active"

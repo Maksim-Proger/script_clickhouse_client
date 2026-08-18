@@ -272,6 +272,44 @@
             <input type="text" id="chListDescription" placeholder="необязательно">
         </label>
 
+        <hr class="menu-divider">
+
+        <label class="login-field">
+            <span>Дата</span>
+            <input type="date" id="saveListDate">
+        </label>
+
+        <label class="login-field">
+            <span>С (Дата и Время)</span>
+            <span style="display: flex; gap: 10px; align-items: center;">
+                <input type="date" id="saveListDateFrom" style="flex: 2;">
+                <input type="time" id="saveListTimeFrom" step="1" style="flex: 2;">
+            </span>
+        </label>
+
+        <label class="login-field">
+            <span>По (Дата и Время)</span>
+            <span style="display: flex; gap: 10px; align-items: center;">
+                <input type="date" id="saveListDateTo" style="flex: 2;">
+                <input type="time" id="saveListTimeTo" step="1" style="flex: 2;">
+            </span>
+        </label>
+
+        <label class="login-field">
+            <span>IP адрес</span>
+            <input type="text" id="saveListIP">
+        </label>
+
+        <label class="login-field">
+            <span>Источник</span>
+            <input type="text" id="saveListSource">
+        </label>
+
+        <label class="login-field">
+            <span>Профиль</span>
+            <input type="text" id="saveListProfile">
+        </label>
+
         <div class="dialog-actions" style="margin-top: 15px;">
             <button class="secondary-button" onclick="this.closest('dialog').close()">Отмена</button>
             <button class="primary-button" id="btnConfirmSaveList">Сохранить</button>

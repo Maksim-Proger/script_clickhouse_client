@@ -21,9 +21,14 @@ nats:
 clickhouse:
   host: "10.81.0.136"
   http_port: 8123
+  port: 9000
+  database: "feedgen"
   timeout_sec: 10
   user: "feedgen"
   password: "dien9ux9aithohbec0aephu5meYee4In"
+  write_hosts:
+    - "10.25.78.163"
+    - "10.25.78.164"
 
 postgres:
   host: "localhost"
