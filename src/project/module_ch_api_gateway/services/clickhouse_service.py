@@ -44,7 +44,7 @@ def build_exclude_conditions(exclude_lists: Optional[list[dict]]) -> list[str]:
         f"SELECT value FROM `feedgen`.`feed_list_mirror` "
         f"WHERE {scope} AND value_type = 'ip')",
         f"NOT arrayExists("
-        f"r -> IPv4StringToNumOrDefault(ip_address) BETWEEN r.1 AND r.2, "
+        f"r -> toUInt32(ip_address) BETWEEN r.1 AND r.2, "
         f"(SELECT groupArray((range_start, range_end)) FROM `feedgen`.`feed_list_mirror` "
         f"WHERE {scope} AND value_type = 'cidr'))",
     ]
