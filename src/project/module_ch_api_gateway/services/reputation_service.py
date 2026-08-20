@@ -50,7 +50,7 @@ def _build_where(filters: ReputationFilters, exclude_lists: Optional[list[dict]]
     if filters.score_to is not None:
         conditions.append(f"score <= {float(filters.score_to)}")
     if filters.ip:
-        conditions.append(f"isIPAddressInRange(ip_address, '{_safe_cidr(filters.ip)}')")
+        conditions.append(f"isIPAddressInRange(IPv4NumToString(ip_address), '{_safe_cidr(filters.ip)}')")
 
     conditions.extend(build_exclude_conditions(exclude_lists))
 
