@@ -13,6 +13,7 @@ def get_reputation_service(request: Request) -> ReputationService:
     return ReputationService(
         ch_client=request.app.state.ch_client,
         geoip_client=request.app.state.geoip_client,
+        stream_client=request.app.state.ch_stream_client,
     )
 
 

@@ -110,7 +110,7 @@ async def rate_limit_cleanup_loop(app_state):
 
 
 def get_ch_service(request: Request) -> ClickHouseService:
-    return ClickHouseService(request.app.state.ch_client)
+    return ClickHouseService(request.app.state.ch_client, request.app.state.ch_stream_client)
 
 
 def get_feed_list_service(request: Request):

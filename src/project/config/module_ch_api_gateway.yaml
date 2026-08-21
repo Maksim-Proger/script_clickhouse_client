@@ -24,6 +24,7 @@ clickhouse:
   port: 9000
   database: "feedgen"
   timeout_sec: 10
+  stream_timeout_sec: 300
   user: "feedgen"
   password: "dien9ux9aithohbec0aephu5meYee4In"
   write_hosts:

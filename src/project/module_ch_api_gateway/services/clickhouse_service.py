@@ -67,8 +67,9 @@ def apply_default_period(filters: CHReadFilters, days: int) -> None:
 
 
 class ClickHouseService:
-    def __init__(self, client: ClickHouseClient):
+    def __init__(self, client: ClickHouseClient, stream_client):
         self.client = client
+        self.stream_client = stream_client
 
     @staticmethod
     def _build_conditions(filters: CHReadFilters) -> list:
@@ -225,25 +226,20 @@ class ClickHouseService:
             f"FROM `feedgen`.`blocked_ips` {self._where_clause(filters)}"
         )
 
-    async def fetch_read_chunk(self,
-                               filters: CHReadFilters,
-                               limit: int,
-                               offset: int,
-                               exclude_lists: Optional[list[dict]] = None) -> list:
+    def iter_read_rows(self,
+                       filters: CHReadFilters,
+                       chunk_size: int,
+                       exclude_lists: Optional[list[dict]] = None):
         query = (
             f"SELECT * FROM `feedgen`.`blocked_ips` {self._where_clause(filters, exclude_lists)} "
-            f"ORDER BY blocked_at DESC, ip_address, source, profile "
-            f"LIMIT {limit} OFFSET {offset}"
+            f"ORDER BY blocked_at DESC, ip_address, source, profile"
         )
-        result = await self.client.fetch_json(query)
-        return result.get("data", [])
+        return self.stream_client.iter_rows(query, chunk_size)
 
-    async def fetch_export_chunk(self,
-                                 filters: CHReadFilters,
-                                 limit: int,
-                                 offset: int,
-                                 exclude_lists: Optional[list[dict]] = None) -> list:
-
+    def iter_export_rows(self,
+                         filters: CHReadFilters,
+                         chunk_size: int,
+                         exclude_lists: Optional[list[dict]] = None):
         where_clause = self._where_clause(filters, exclude_lists)
         if filters.unique_ips:
             query = (
@@ -251,35 +247,26 @@ class ClickHouseService:
                 f"source, profile "
                 f"FROM `feedgen`.`blocked_ips` {where_clause} "
                 f"GROUP BY ip_address, source, profile "
-                f"ORDER BY ip_address, source, profile "
-                f"LIMIT {limit} OFFSET {offset}"
+                f"ORDER BY ip_address, source, profile"
             )
         else:
             query = (
                 f"SELECT * FROM `feedgen`.`blocked_ips` {where_clause} "
-                f"ORDER BY blocked_at DESC, ip_address, source, profile "
-                f"LIMIT {limit} OFFSET {offset}"
+                f"ORDER BY blocked_at DESC, ip_address, source, profile"
             )
-        result = await self.client.fetch_json(query)
-        return result.get("data", [])
+        return self.stream_client.iter_rows(query, chunk_size)
 
-    async def fetch_unique_ip_chunk(self,
-                                    filters: CHReadFilters,
-                                    limit: int,
-                                    after_ip: str = "",
-                                    exclude_lists: Optional[list[dict]] = None) -> list:
+    def iter_unique_ip_rows(self,
+                            filters: CHReadFilters,
+                            chunk_size: int,
+                            exclude_lists: Optional[list[dict]] = None):
         conditions = self._build_conditions(filters)
-        if after_ip:
-            conditions.append(f"ip_address > '{_safe_ip(after_ip)}'")
         conditions.extend(build_exclude_conditions(exclude_lists))
         where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
         query = (
             f"SELECT ip_address, min(blocked_at) as first_detected, max(blocked_at) as last_detected, "
             f"any(source) as source "
             f"FROM `feedgen`.`blocked_ips` {where_clause} "
-            f"GROUP BY ip_address "
-            f"ORDER BY ip_address "
-            f"LIMIT {limit}"
+            f"GROUP BY ip_address"
         )
-        result = await self.client.fetch_json(query)
-        return result.get("data", [])
+        return self.stream_client.iter_rows(query, chunk_size)
