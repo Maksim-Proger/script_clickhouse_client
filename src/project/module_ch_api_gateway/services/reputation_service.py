@@ -108,30 +108,31 @@ def _only_ip_row(raw: str) -> str:
 
 
 class ReputationService:
-    def __init__(self, ch_client, geoip_client):
+    def __init__(self, ch_client, geoip_client, stream_client):
         self.ch_client = ch_client
         self.geoip_client = geoip_client
+        self.stream_client = stream_client
 
     async def _enrich(self, records: list[dict]) -> list[dict]:
         return await asyncio.to_thread(self.geoip_client.enrich_batch, records)
 
-    async def fetch_snapshot_chunk(self,
-                                   filters: ReputationFilters,
-                                   limit: int,
-                                   offset: int,
-                                   enrich: bool = True,
-                                   exclude_lists: Optional[list[dict]] = None) -> tuple[list[dict], int]:
-        where = _build_where(filters, exclude_lists)
+    async def iter_snapshot_rows(self,
+                                 filters: ReputationFilters,
+                                 chunk_size: int,
+                                 enrich: bool = True,
+                                 exclude_lists: Optional[list[dict]] = None):
         query = (
             f"SELECT {_SELECT_COLS} FROM feedgen.ip_reputation_snapshots "
-            f"{where} ORDER BY score DESC, ip_address LIMIT {limit} OFFSET {offset}"
+            f"{_build_where(filters, exclude_lists)} ORDER BY score DESC, ip_address"
         )
-        res = await self.ch_client.fetch_json(query)
-        raw = _coerce_ints(res.get("data", []))
-        if not enrich:
-            return raw, len(raw)
-        records = await self._enrich(raw)
-        return _apply_geo_filter(records, filters), len(raw)
+        async for chunk in self.stream_client.iter_rows(query, chunk_size):
+            raw = _coerce_ints(chunk)
+            if not enrich:
+                yield raw
+                continue
+            filtered = _apply_geo_filter(await self._enrich(raw), filters)
+            if filtered:
+                yield filtered
 
     async def count_snapshot(self, filters: ReputationFilters) -> int:
         try:
@@ -232,16 +233,9 @@ class ReputationService:
                 yield [_only_ip_row(row) for row in chunk] if filters.only_ip else chunk
             return
 
-        offset = 0
-        while True:
-            rows, fetched = await self.fetch_snapshot_chunk(
-                filters, CHUNK_SIZE, offset, enrich=not filters.only_ip,
-            )
-            if fetched == 0:
-                break
+        async for rows in self.iter_snapshot_rows(filters, CHUNK_SIZE, enrich=not filters.only_ip):
             if filters.only_ip:
                 rows = [{"ip_address": r["ip_address"]} for r in rows]
-            yield [json.dumps(r, ensure_ascii=False, default=str) for r in rows]
-            if fetched < CHUNK_SIZE:
-                break
-            offset += CHUNK_SIZE
+            yield await asyncio.to_thread(
+                lambda batch=rows: [json.dumps(r, ensure_ascii=False, default=str) for r in batch]
+            )

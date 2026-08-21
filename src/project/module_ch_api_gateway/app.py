@@ -7,7 +7,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from project.module_ch_api_gateway.api.dependencies.dependencies import rate_limit_cleanup_loop
-from project.module_ch_api_gateway.api.routers import clickhouse_router, auth_router, data_router, user_router, simple_router, feed_lists_router
+from project.module_ch_api_gateway.api.routers import clickhouse_router, auth_router, data_router, user_router, \
+    simple_router, feed_lists_router
 from project.module_ch_api_gateway.infrastructure.clickhouse_client import ClickHouseClient
 from project.module_ch_api_gateway.infrastructure.db import DatabaseManager
 from project.module_ch_api_gateway.infrastructure.feed_list_repo import FeedListRepository
@@ -22,6 +23,7 @@ from project.module_ch_api_gateway.services.feed_list_service import (
     search_cleanup_loop,
     mirror_sync_loop,
 )
+from project.module_ch_api_gateway.infrastructure.clickhouse_stream_client import ClickHouseStreamClient
 
 logger = logging.getLogger("ch-api-gateway")
 
@@ -83,6 +85,15 @@ def create_app(config: dict) -> FastAPI:
         timeout_sec=config["clickhouse"]["timeout_sec"],
         user=config["clickhouse"].get("user", "default"),
         password=config["clickhouse"].get("password", ""),
+    )
+
+    app.state.ch_stream_client = ClickHouseStreamClient(
+        host=config["clickhouse"]["host"],
+        port=config["clickhouse"]["port"],
+        database=config["clickhouse"].get("database", "feedgen"),
+        user=config["clickhouse"].get("user", "default"),
+        password=config["clickhouse"].get("password", ""),
+        timeout_sec=config["clickhouse"].get("stream_timeout_sec", 300),
     )
 
     app.state.geoip_client = GeoIPClient(

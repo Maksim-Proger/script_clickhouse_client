@@ -5,6 +5,7 @@ import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
+from contextlib import aclosing
 
 from project.module_ch_api_gateway.infrastructure.feed_list_mirror_client import FeedListMirrorClient
 from project.module_ch_api_gateway.infrastructure.feed_list_repo import FeedListRepository
@@ -72,11 +73,14 @@ def _parse_dt(value: Any) -> Optional[datetime]:
 def _to_tuples(items: list[dict]) -> list[tuple]:
     return [tuple(item[field] for field in _ITEM_FIELDS) for item in items]
 
+
 def _rows_to_tuples(rows: list, row_to_item) -> list[tuple]:
     return _to_tuples([item for item in (row_to_item(r) for r in rows) if item])
 
+
 def _rows_to_json(rows: list[dict]) -> list[str]:
     return [json.dumps(r, ensure_ascii=False, default=str) for r in rows]
+
 
 def _mirror_range(value: str, value_type: str) -> tuple[int, int]:
     if value_type == "cidr":
@@ -103,6 +107,7 @@ def _items_to_mirror_rows(rows: list, list_id: int, version: int, updated_at) ->
 def _mirror_backoff_minutes(attempts: int) -> int:
     idx = min(attempts, len(MIRROR_BACKOFF_MINUTES)) - 1
     return MIRROR_BACKOFF_MINUTES[idx]
+
 
 def _reputation_row_to_item(row: dict) -> Optional[dict]:
     ip = row.get("ip_address")
@@ -390,23 +395,9 @@ class FeedListService:
                             ch_service,
                             filters,
                             exclude_lists: Optional[list[dict]] = None) -> None:
-        after_ip = ""
-
-        while True:
-            rows = await ch_service.fetch_unique_ip_chunk(
-                filters, CHUNK_SIZE, after_ip, exclude_lists,
-            )
-            if not rows:
-                break
-
-            fetched = len(rows)
-            after_ip = rows[-1]["ip_address"]
-
+        async for rows in ch_service.iter_unique_ip_rows(filters, CHUNK_SIZE, exclude_lists):
             tuples = await asyncio.to_thread(_rows_to_tuples, rows, _blocked_row_to_item)
             await self.repo.insert_items(list_id, version, tuples)
-
-            if fetched < CHUNK_SIZE:
-                break
 
     async def build_from_reputation_rows(self,
                                          list_id: int,
@@ -423,23 +414,15 @@ class FeedListService:
                                              reputation_service,
                                              filters,
                                              exclude_lists: Optional[list[dict]] = None) -> None:
-        offset = 0
-        while True:
-            rows, fetched = await reputation_service.fetch_snapshot_chunk(
-                filters, CHUNK_SIZE, offset, exclude_lists=exclude_lists,
-            )
-            if fetched == 0:
-                break
+        async for rows in reputation_service.iter_snapshot_rows(
+                filters, CHUNK_SIZE, exclude_lists=exclude_lists):
             await self.build_from_reputation_rows(list_id, version, rows)
-            if fetched < CHUNK_SIZE:
-                break
-            offset += CHUNK_SIZE
 
     async def build_search(self,
                            owner: str,
                            kind: str,
                            filters,
-                           fetch_chunk) -> dict:
+                           row_source) -> dict:
         search_id = uuid.uuid4().hex
         await self.repo.evict_owner_sessions(owner, SEARCH_SESSIONS_PER_USER - 1)
         await self.repo.create_search_session(
@@ -449,23 +432,14 @@ class FeedListService:
         )
 
         seq = 0
-        offset = 0
-        while True:
-            rows, fetched = await fetch_chunk(CHUNK_SIZE, offset)
-            if fetched == 0:
-                break
+        async with aclosing(row_source) as rows_stream:
+            async for rows in rows_stream:
+                seq += len(rows)
+                if seq > MAX_SOURCE_ROWS:
+                    raise ValueError(f"Выборка превысила лимит {MAX_SOURCE_ROWS} записей, уточните фильтры")
 
-            seq += len(rows)
-            if seq > MAX_SOURCE_ROWS:
-                raise ValueError(f"Выборка превысила лимит {MAX_SOURCE_ROWS} записей, уточните фильтры")
-
-            payload = await asyncio.to_thread(_rows_to_json, rows)
-            await self.repo.add_search_rows(search_id, seq - len(rows), payload)
-
-            if fetched < CHUNK_SIZE:
-                break
-
-            offset += CHUNK_SIZE
+                payload = await asyncio.to_thread(_rows_to_json, rows)
+                await self.repo.add_search_rows(search_id, seq - len(rows), payload)
 
         await self.repo.finish_search_session(search_id, seq)
         logger.info("action=search_built search_id=%s kind=%s total=%d owner=%s", search_id, kind, seq, owner)
@@ -477,26 +451,19 @@ class FeedListService:
                               filters,
                               exclude_lists: Optional[list[dict]],
                               kind: str) -> dict:
-        async def fetch_chunk(limit, offset):
-            if kind == "export":
-                rows = await ch_service.fetch_export_chunk(filters, limit, offset, exclude_lists)
-            else:
-                rows = await ch_service.fetch_read_chunk(filters, limit, offset, exclude_lists)
-            return rows, len(rows)
-
-        return await self.build_search(owner, kind, filters, fetch_chunk)
+        if kind == "export":
+            rows = ch_service.iter_export_rows(filters, CHUNK_SIZE, exclude_lists)
+        else:
+            rows = ch_service.iter_read_rows(filters, CHUNK_SIZE, exclude_lists)
+        return await self.build_search(owner, kind, filters, rows)
 
     async def build_reputation_search(self,
                                       owner: str,
                                       reputation_service,
                                       filters,
                                       exclude_lists: Optional[list[dict]]) -> dict:
-        async def fetch_chunk(limit, offset):
-            return await reputation_service.fetch_snapshot_chunk(
-                filters, limit, offset, exclude_lists=exclude_lists,
-            )
-
-        return await self.build_search(owner, "reputation", filters, fetch_chunk)
+        rows = reputation_service.iter_snapshot_rows(filters, CHUNK_SIZE, exclude_lists=exclude_lists)
+        return await self.build_search(owner, "reputation", filters, rows)
 
     async def build_from_session(self, list_id: int, version: int, owner: str, search_id: str, row_to_item) -> None:
         session = await self.repo.get_search_session(search_id, owner, SEARCH_TTL_MINUTES)
@@ -568,6 +535,7 @@ async def search_cleanup_loop(repo: FeedListRepository, interval: int = CLEANUP_
             break
         except Exception as e:
             logger.error("action=search_cleanup_error error=%s", str(e))
+
 
 async def mirror_sync_loop(service: "FeedListService", interval: int = MIRROR_SYNC_INTERVAL) -> None:
     while True:
