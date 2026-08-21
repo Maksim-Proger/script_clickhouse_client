@@ -197,6 +197,7 @@ class FeedListService:
                  mirror: FeedListMirrorClient):
         self.repo = repo
         self.mirror = mirror
+        self._background_tasks: set[asyncio.Task] = set()
 
     @property
     def is_available(self) -> bool:
@@ -382,7 +383,9 @@ class FeedListService:
                         "action=feed_list_items_cleanup_failed id=%d error=%s", list_id, str(cleanup_err)
                     )
 
-        asyncio.create_task(runner())
+        task = asyncio.create_task(runner())
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
         logger.info(
             "action=feed_list_build_started id=%d name=%s source_type=%s created_by=%s",
             list_id, row["name"], source_type, created_by,

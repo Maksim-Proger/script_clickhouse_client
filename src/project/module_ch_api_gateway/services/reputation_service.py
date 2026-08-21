@@ -61,7 +61,7 @@ def _build_page_query(where: str, page: int, page_size: int) -> str:
     offset = (page - 1) * page_size
     return (
         f"SELECT {_SELECT_COLS} FROM feedgen.ip_reputation_snapshots "
-        f"{where} ORDER BY score DESC LIMIT {page_size} OFFSET {offset}"
+        f"{where} ORDER BY score DESC, ip_address LIMIT {page_size} OFFSET {offset}"
     )
 
 
