@@ -260,6 +260,26 @@ async def set_feed_list_status(
     return service.serialize_list(row)
 
 
+@router.post("/{list_id}/retry-sync")
+async def retry_feed_list_sync(
+        list_id: int,
+        service: FeedListService = Depends(get_feed_list_service),
+        user=Depends(get_interactive_user),
+):
+    _require_db(service)
+    meta = await _get_list_or_404(service, list_id)
+    if meta["status"] != "sync_failed":
+        raise HTTPException(
+            status_code=409,
+            detail="Повтор синхронизации доступен только для несинхронизированных списков",
+        )
+    row = await service.repo.retry_sync(list_id)
+    if row is None:
+        raise HTTPException(status_code=409, detail="Статус списка уже изменился, обновите страницу")
+    logger.info("action=feed_list_sync_retried id=%d user=%s", list_id, _user_key(user))
+    return service.serialize_list(row)
+
+
 @router.delete("/{list_id}")
 async def delete_feed_list(
         list_id: int,

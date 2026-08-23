@@ -118,8 +118,12 @@ function renderTable(lists) {
         let actions;
         if (l.status === "creating" || l.status === "pending_sync") {
             actions = "";
-        } else if (l.status === "failed" || l.status === "sync_failed") {
+        } else if (l.status === "failed") {
             actions = `<button class="btn btn--danger btn--small" onclick="window.deleteList(${l.id})">Удалить</button>`;
+        } else if (l.status === "sync_failed") {
+            actions = `
+                <button class="btn btn--secondary btn--small" onclick="window.retrySync(${l.id})">Повторить</button>
+                <button class="btn btn--danger btn--small" onclick="window.deleteList(${l.id})">Удалить</button>`;
         } else {
             const toggleAction = l.status === "active"
                 ? `<button class="btn btn--secondary btn--small" onclick="window.setListStatus(${l.id}, 'archived')">Архив</button>`
@@ -318,6 +322,21 @@ window.deleteList = async (listId) => {
         await loadLists(currentPage);
     } catch (e) {
         if (e.message !== "Unauthorized") alert(`Ошибка удаления: ${e.message}`);
+    }
+};
+
+window.retrySync = async (listId) => {
+    try {
+        const response = await Auth.authFetch(`${Auth.API_BASE}/api/feed-lists/${listId}/retry-sync`, {
+            method: "POST"
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.detail || `HTTP ${response.status}`);
+        }
+        await loadLists(currentPage);
+    } catch (e) {
+        if (e.message !== "Unauthorized") alert(`Ошибка: ${e.message}`);
     }
 };
 

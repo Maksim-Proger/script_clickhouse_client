@@ -150,6 +150,33 @@ class FeedListRepository:
                 list_id, attempts, error[:1000],
             )
 
+    async def retry_sync(self, list_id: int) -> Optional[asyncpg.Record]:
+        async with self.db.pool.acquire() as conn:
+            return await conn.fetchrow(
+                "UPDATE feed_lists SET status = 'pending_sync', sync_attempts = 0, "
+                "last_error = NULL, next_attempt_at = now(), updated_at = now(), "
+                "mirror_cursor = NULL, mirror_updated_at = NULL "
+                "WHERE id = $1 AND status = 'sync_failed' RETURNING *",
+                list_id,
+            )
+
+    async def expire_sync_failed(self, ttl_days: int) -> int:
+        async with self.db.pool.acquire() as conn:
+            rows = await conn.fetch(
+                "UPDATE feed_lists SET status = 'deleting', sync_attempts = 0, "
+                "last_error = NULL, next_attempt_at = now(), updated_at = now() "
+                "WHERE status = 'sync_failed' "
+                "AND updated_at < now() - make_interval(days => $1) "
+                "RETURNING id",
+                ttl_days,
+            )
+            if rows:
+                logger.warning(
+                    "action=feed_lists_sync_failed_expired count=%d ids=%s ttl_days=%d",
+                    len(rows), ",".join(str(r["id"]) for r in rows), ttl_days,
+                )
+            return len(rows)
+
     async def activate_list(self, list_id: int) -> Optional[asyncpg.Record]:
         async with self.db.pool.acquire() as conn:
             return await conn.fetchrow(
