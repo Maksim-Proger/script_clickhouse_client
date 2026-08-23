@@ -102,7 +102,7 @@ class ClickHouseService:
         offset = (filters.page - 1) * filters.page_size
         return (
             f"SELECT * FROM `feedgen`.`blocked_ips` {where_clause} "
-            f"ORDER BY blocked_at DESC "
+            f"ORDER BY blocked_at DESC, ip_address, source, profile "
             f"LIMIT {filters.page_size} OFFSET {offset}"
         )
 
@@ -172,7 +172,7 @@ class ClickHouseService:
 
         return (
             f"SELECT * FROM `feedgen`.`blocked_ips` {where_clause} "
-            f"ORDER BY blocked_at DESC "
+            f"ORDER BY blocked_at DESC, ip_address, source, profile "
             f"LIMIT 1000000"
         )
 

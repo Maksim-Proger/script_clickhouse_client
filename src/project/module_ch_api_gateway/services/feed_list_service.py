@@ -31,6 +31,7 @@ MIRROR_SYNC_BATCH = 5
 MIRROR_COUNT_RETRY_DELAY = 2.0
 MIRROR_BACKOFF_MINUTES = (1, 2, 5, 10, 30)
 MIRROR_MAX_ATTEMPTS = 10
+SYNC_FAILED_TTL_DAYS = 7
 
 _DT_FORMATS = ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d")
 
@@ -197,6 +198,7 @@ class FeedListService:
                  mirror: FeedListMirrorClient):
         self.repo = repo
         self.mirror = mirror
+        self._background_tasks: set[asyncio.Task] = set()
 
     @property
     def is_available(self) -> bool:
@@ -235,7 +237,7 @@ class FeedListService:
             host = self.mirror.pick_write_host()
 
             async for chunk in self.repo.iter_items(list_id, version, after_value=cursor):
-                token = f"{list_id}:{version}:{cursor}"
+                token = f"{list_id}:{version}:{updated_at}:{cursor}"
                 mirror_rows = await asyncio.to_thread(
                     _items_to_mirror_rows, chunk, list_id, version, updated_at
                 )
@@ -382,7 +384,9 @@ class FeedListService:
                         "action=feed_list_items_cleanup_failed id=%d error=%s", list_id, str(cleanup_err)
                     )
 
-        asyncio.create_task(runner())
+        task = asyncio.create_task(runner())
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
         logger.info(
             "action=feed_list_build_started id=%d name=%s source_type=%s created_by=%s",
             list_id, row["name"], source_type, created_by,
@@ -547,6 +551,8 @@ async def mirror_sync_loop(service: "FeedListService", interval: int = MIRROR_SY
             rows = await service.repo.get_lists_for_mirror_sync(MIRROR_SYNC_BATCH)
             for row in rows:
                 await service.sync_mirror(row)
+
+            await service.repo.expire_sync_failed(SYNC_FAILED_TTL_DAYS)
 
             deletions = await service.repo.get_lists_for_deletion(MIRROR_SYNC_BATCH)
             for row in deletions:
