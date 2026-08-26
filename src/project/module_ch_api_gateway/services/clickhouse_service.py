@@ -139,25 +139,29 @@ class ClickHouseService:
 
     async def get_blocked_ips(self, filters: CHReadFilters):
         data_query = self._build_blocked_ips_query(filters)
-        count_query = self._build_count_query(filters)
+        need_count = filters.page == 1
 
         try:
             data_res = await self.client.fetch_json(data_query)
             data = data_res.get("data", [])
 
-            count_res = await self.client.fetch_json(count_query)
-            total = int(count_res["data"][0]["total"])
+            if need_count:
+                count_res = await self.client.fetch_json(self._build_count_query(filters))
+                total = int(count_res["data"][0]["total"])
+            else:
+                total = None
 
         except Exception as e:
             logger.error("action=ch_fetch_failed error=%s", str(e))
-            data, total = [], 0
+            data, total = [], 0 if need_count else None
 
         return {
             "data": data,
             "total": total,
             "page": filters.page,
             "page_size": filters.page_size,
-            "total_pages": (total + filters.page_size - 1) // filters.page_size if total > 0 else 1
+            "total_pages": None if total is None
+            else (total + filters.page_size - 1) // filters.page_size if total > 0 else 1
         }
 
     async def get_simple_ips(self, filters: CHSimpleFilters) -> list:
@@ -222,7 +226,7 @@ class ClickHouseService:
         if not filters.unique_ips:
             return await self.count_rows(filters)
         return await self._count(
-            f"SELECT uniq((ip_address, source, profile)) as total "
+            f"SELECT uniqExact((ip_address, source, profile)) as total "
             f"FROM `feedgen`.`blocked_ips` {self._where_clause(filters)}"
         )
 

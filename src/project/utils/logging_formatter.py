@@ -17,4 +17,6 @@ def setup_logging(name, level=logging.INFO):
 
     logger.propagate = False
 
+    logging.getLogger("clickhouse_driver").setLevel(logging.ERROR)
+
     return logger

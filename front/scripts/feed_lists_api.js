@@ -58,9 +58,11 @@ export function clearExcludeSelection(container) {
     renderExcludeFooter(container);
 }
 
-export async function renderExcludeOptions(container) {
+export async function renderExcludeOptions(container, appliedIds = []) {
     if (!container) return;
-    getSelection(container).clear();
+    const selected = getSelection(container);
+    selected.clear();
+    appliedIds.forEach(id => selected.add(Number(id)));
 
     if (container.dataset.ready !== "1") {
         container.innerHTML = `

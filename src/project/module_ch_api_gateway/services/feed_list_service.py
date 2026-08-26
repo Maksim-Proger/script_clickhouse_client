@@ -309,7 +309,7 @@ class FeedListService:
         await self.repo.mark_for_deletion(list_id, DELETION_GRACE_MINUTES)
 
     async def create_manual(self, name: str, description: str, created_by: str, values: list[str]) -> dict:
-        items = build_items_from_values(values)
+        items = await asyncio.to_thread(build_items_from_values, values)
         if not items:
             raise ValueError("Выборка пуста, список не создан")
 

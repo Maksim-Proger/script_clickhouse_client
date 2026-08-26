@@ -149,7 +149,8 @@ class ReputationService:
             "total": total,
             "page": page,
             "page_size": page_size,
-            "total_pages": (total + page_size - 1) // page_size if total > 0 else 1,
+            "total_pages": None if total is None
+            else (total + page_size - 1) // page_size if total > 0 else 1,
         }
         if search_id is not None:
             env["search_id"] = search_id
@@ -185,8 +186,11 @@ class ReputationService:
             data_res = await self.ch_client.fetch_json(_build_page_query(where, page, page_size))
             page_rows = _coerce_ints(data_res.get("data", []))
 
-            count_res = await self.ch_client.fetch_json(_build_count_query(where))
-            total = int(count_res["data"][0]["total"])
+            if page == 1:
+                count_res = await self.ch_client.fetch_json(_build_count_query(where))
+                total = int(count_res["data"][0]["total"])
+            else:
+                total = None
 
             page_rows = await self._enrich(page_rows)
         except (SessionExpiredError, SourceUnavailableError, ValueError):
