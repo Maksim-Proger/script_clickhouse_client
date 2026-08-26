@@ -42,6 +42,7 @@ const repCountryExclude = document.getElementById("repCountryExclude");
 
 let currentFilters = {};
 let currentPage = 1;
+let currentTotalPages = 1;
 let currentSearchId = null;
 
 function parseList(value) {
@@ -265,10 +266,13 @@ async function load(page = 1) {
             snapshotMeta.textContent = "";
         }
 
+        if (result.total_pages != null) currentTotalPages = result.total_pages;
         renderTable(data);
-        renderPagination(currentPage, result.total_pages || 1);
-        btnRepExport.classList.toggle("is-hidden", !(result.total > 0));
-        btnRepSaveList.classList.toggle("is-hidden", !(result.total > 0));
+        renderPagination(currentPage, currentTotalPages);
+        if (result.total != null) {
+            btnRepExport.classList.toggle("is-hidden", !(result.total > 0));
+            btnRepSaveList.classList.toggle("is-hidden", !(result.total > 0));
+        }
     } catch (e) {
         if (e.message === "Unauthorized") return;
         container.innerHTML = `<p style='padding:20px; color:var(--color-danger)'>Ошибка: ${e.message}</p>`;
@@ -348,7 +352,7 @@ async function exportReputation() {
 
 btnRepFilter.addEventListener("click", () => {
     reputationFilterDialog.showModal();
-    renderExcludeOptions(repExcludeLists).catch(() => {});
+    renderExcludeOptions(repExcludeLists, currentFilters.exclude_list_ids || []).catch(() => {});
 });
 btnRepExport.addEventListener("click", () => reputationExportDialog.showModal());
 

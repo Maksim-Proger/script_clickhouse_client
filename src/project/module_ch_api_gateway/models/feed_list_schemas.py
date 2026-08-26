@@ -11,7 +11,7 @@ class FeedListCreateRequest(BaseModel):
     source_type: Literal["reputation", "blocked_ips", "manual"]
     reputation_filters: Optional[ReputationFilters] = None
     blocked_ips_filters: Optional[CHReadFilters] = None
-    values: Optional[list[str]] = None
+    values: Optional[list[str]] = Field(None, max_length=1_000_000)
 
 
 class FeedListStatusRequest(BaseModel):

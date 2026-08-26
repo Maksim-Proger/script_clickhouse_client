@@ -27,6 +27,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     let currentFilters = {};
     let currentPage = 1;
+    let currentTotalPages = 1;
     let currentSearchId = null;
 
     Auth.setSessionExpiredHandler(showLogin);
@@ -171,10 +172,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
             if (!Array.isArray(data)) throw new Error("Некорректный ответ сервера");
 
-            renderTable(data, result.page || 1, result.total_pages || 1);
+            if (result.total_pages != null) currentTotalPages = result.total_pages;
+            renderTable(data, result.page || 1, currentTotalPages);
             btnSaveList.classList.toggle("is-hidden", data.length === 0);
         } catch (e) {
             if (e.message !== "Unauthorized") {
+                if (e.message.includes("Списки не найдены")) {
+                    currentFilters.exclude_list_ids = [];
+                }
                 container.innerHTML = `<p style='padding:20px; color:red'>Ошибка: ${e.message}</p>`;
                 btnSaveList.classList.add("is-hidden");
             }
@@ -414,7 +419,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     document.getElementById("btnCH").addEventListener("click", () => {
         rchFilterDialog.showModal();
-        renderExcludeOptions(chExcludeLists).catch(() => {});
+        renderExcludeOptions(chExcludeLists, currentFilters.exclude_list_ids || []).catch(() => {});
     });
 
     btnApplyFilters.addEventListener("click", () => {
@@ -435,7 +440,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     document.getElementById("btnExport").addEventListener("click", () => {
         exportDialog.showModal();
-        renderExcludeOptions(exportExcludeLists).catch(() => {});
+        renderExcludeOptions(exportExcludeLists, getCheckedExcludeIds(exportExcludeLists)).catch(() => {});
     });
     btnConfirmExport.addEventListener("click", exportData);
 
