@@ -149,6 +149,39 @@ def parse_input(
     return records
 
 
+def build_manual_records(
+        items: List[dict],
+        source: str,
+        profile: str = "",
+        dt_format: str = "%Y-%m-%dT%H:%M:%S",
+) -> List[dict]:
+    now_str = datetime.now(timezone.utc).strftime(dt_format)
+
+    records: List[dict] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+
+        ip = str(item.get("ip_address", "")).strip()
+        if not IP_REGEX.fullmatch(ip):
+            continue
+
+        blocked_at_raw = item.get("blocked_at")
+        blocked_at = _parse_datetime(blocked_at_raw, dt_format) if blocked_at_raw else now_str
+
+        item_profile = item.get("profile")
+        if item_profile is None:
+            item_profile = profile
+
+        records.append({
+            "ip_address": ip,
+            "blocked_at": blocked_at,
+            "source": source,
+            "profile": str(item_profile),
+        })
+    return records
+
+
 def _is_in_period(blocked_at: str, period: dict) -> bool:
     try:
         dt = datetime.strptime(blocked_at, "%Y-%m-%d %H:%M:%S")

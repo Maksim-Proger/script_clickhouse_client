@@ -19,11 +19,13 @@ document.addEventListener("DOMContentLoaded", () => {
     const container = document.getElementById("data-list");
     const paginationContainer = document.getElementById("pagination-container");
     const fileInput = document.getElementById("fileInput");
+    const uploadSource = document.getElementById("uploadSource");
+    const uploadProfile = document.getElementById("uploadProfile");
     const btnUploadFile = document.getElementById("btnUploadFile");
     const btnConfirmExport = document.getElementById("btnConfirmExport");
     const btnApplyFilters = document.getElementById("btnApplyFilters");
 
-    const IP_REGEX = /\b(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)){3}\b/;
+    const IP_REGEX = /^(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)){3}$/;
 
     let currentFilters = {};
     let currentPage = 1;
@@ -258,6 +260,71 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
+    function buildXlsxRecords(buffer, now) {
+        const workbook = XLSX.read(new Uint8Array(buffer), { type: 'array' });
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rawData = XLSX.utils.sheet_to_json(worksheet);
+
+        const records = [];
+        let skipped = 0;
+
+        rawData.forEach(row => {
+            const lowerRow = Object.keys(row).reduce((acc, key) => {
+                acc[key.toLowerCase()] = row[key];
+                return acc;
+            }, {});
+
+            const ip = String(lowerRow.ip_address || "").trim();
+            if (!IP_REGEX.test(ip)) {
+                skipped++;
+                return;
+            }
+
+            const record = {
+                blocked_at: String(lowerRow.blocked_at || now).trim(),
+                ip_address: ip
+            };
+
+            const profile = String(lowerRow.profile || "").trim();
+            if (profile) record.profile = profile;
+
+            records.push(record);
+        });
+
+        return { records, skipped };
+    }
+
+    function buildTxtRecords(buffer, now) {
+        const text = new TextDecoder().decode(buffer);
+
+        const records = [];
+        let skipped = 0;
+
+        text.split('\n').forEach(rawLine => {
+            const line = rawLine.trim();
+            if (!line) return;
+
+            const comma = line.indexOf(",");
+            const ip = (comma === -1 ? line : line.slice(0, comma)).trim();
+            if (!IP_REGEX.test(ip)) {
+                skipped++;
+                return;
+            }
+
+            const record = {
+                blocked_at: now,
+                ip_address: ip
+            };
+
+            const profile = comma === -1 ? "" : line.slice(comma + 1).trim();
+            if (profile) record.profile = profile;
+
+            records.push(record);
+        });
+
+        return { records, skipped };
+    }
+
     async function uploadFile() {
         const file = fileInput.files[0];
         if (!file) return alert("Выберите файл");
@@ -267,57 +334,31 @@ document.addEventListener("DOMContentLoaded", () => {
 
         reader.onload = async (e) => {
             try {
-                let jsonData = [];
                 const now = new Date().toISOString().replace('T', ' ').split('.')[0];
 
+                let parsed = { records: [], skipped: 0 };
                 if (fileName.endsWith('.xlsx')) {
-                    const workbook = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
-                    const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-                    const rawData = XLSX.utils.sheet_to_json(worksheet);
-
-                    jsonData = rawData.map(row => {
-                        const lowerRow = Object.keys(row).reduce((acc, key) => {
-                            acc[key.toLowerCase()] = row[key];
-                            return acc;
-                        }, {});
-
-                        return {
-                            blocked_at: lowerRow.blocked_at || now,
-                            id: lowerRow.id || null,
-                            ip_address: String(lowerRow.ip_address || "").trim(),
-                            source: lowerRow.source || "manual_excel",
-                            profile: lowerRow.profile || ""
-                        };
-                    });
-
+                    parsed = buildXlsxRecords(e.target.result, now);
                 } else if (fileName.endsWith('.txt')) {
-                    const text = new TextDecoder().decode(e.target.result);
-                    jsonData = text.split('\n')
-                        .map(line => line.trim())
-                        .filter(line => IP_REGEX.test(line))
-                        .map(ip => ({
-                            blocked_at: now,
-                            id: null,
-                            ip_address: ip,
-                            source: "manual_txt",
-                            profile: ""
-                        }));
+                    parsed = buildTxtRecords(e.target.result, now);
                 }
 
-                const finalData = jsonData.filter(item => item.ip_address.length > 0);
-
-                if (finalData.length === 0) {
-                    return alert("В файле не найдено корректных данных");
+                if (parsed.records.length === 0) {
+                    return alert(`В файле не найдено корректных данных, пропущено строк: ${parsed.skipped}`);
                 }
 
                 const response = await Auth.authFetch(`${Auth.API_BASE}/data/receive`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(finalData)
+                    body: JSON.stringify({
+                        source: uploadSource.value.trim(),
+                        profile: uploadProfile.value.trim(),
+                        records: parsed.records
+                    })
                 });
 
                 if (response.ok) {
-                    alert(`Успешно загружено записей: ${finalData.length}`);
+                    alert(`Принято строк: ${parsed.records.length}, пропущено: ${parsed.skipped}`);
                     uploadDialog.close();
                     fileInput.value = "";
                 } else {
@@ -435,7 +476,11 @@ document.addEventListener("DOMContentLoaded", () => {
         requestDG();
     });
 
-    document.getElementById("btnUpload").addEventListener("click", () => uploadDialog.showModal());
+    document.getElementById("btnUpload").addEventListener("click", () => {
+        uploadSource.value = "";
+        uploadProfile.value = "";
+        uploadDialog.showModal();
+    });
     btnUploadFile.addEventListener("click", uploadFile);
 
     document.getElementById("btnExport").addEventListener("click", () => {

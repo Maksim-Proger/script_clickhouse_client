@@ -1,3 +1,7 @@
+import json
+
+
+MAX_PAYLOAD_BYTES = 700_000
 
 
 class NatsService:
@@ -19,10 +23,35 @@ class NatsService:
         payload = {"action": "load", "params": params}
         return await self.infra.request(self.pa_subject, payload, timeout=self.pa_timeout)
 
-    async def publish_external_data(self, data, batch_size: int = 5000):
-        if isinstance(data, list):
-            for i in range(0, len(data), batch_size):
-                chunk = data[i:i + batch_size]
-                await self.infra.publish("data.received", chunk)
+    async def publish_external_data(self, data):
+        if isinstance(data, dict):
+            records = data.get("records") or []
+            source = data.get("source") or ""
+            profile = data.get("profile") or ""
+        elif isinstance(data, list):
+            records, source, profile = data, "", ""
         else:
             await self.infra.publish("data.received", data)
+            return
+
+        empty_size = len(json.dumps({"source": source, "profile": profile, "records": []}).encode())
+
+        chunk = []
+        size = empty_size
+        for record in records:
+            record_size = len(json.dumps(record).encode()) + 2
+            if chunk and size + record_size > MAX_PAYLOAD_BYTES:
+                await self._publish_chunk(chunk, source, profile)
+                chunk = []
+                size = empty_size
+            chunk.append(record)
+            size += record_size
+
+        if chunk:
+            await self._publish_chunk(chunk, source, profile)
+
+    async def _publish_chunk(self, records: list, source: str, profile: str):
+        await self.infra.publish(
+            "data.received",
+            {"source": source, "profile": profile, "records": records},
+        )

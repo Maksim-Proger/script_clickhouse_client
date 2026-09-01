@@ -1,13 +1,16 @@
 import asyncio
+import json
 import logging
 
 from nats.aio.client import Client as NatsClient
 
 from project.module_data_collector.dg_manager import _publish_records
 from project.module_data_collector.lifecycle import Lifecycle
-from project.module_data_collector.parser.parser import parse_input
+from project.module_data_collector.parser.parser import build_manual_records
 
 logger = logging.getLogger("data-collector.web_consumer")
+
+DEFAULT_SOURCE = "web_interface"
 
 
 class NatsWebConsumer:
@@ -30,12 +33,34 @@ class NatsWebConsumer:
         try:
             logger.debug("action=web_data_received size=%d", len(msg.data))
 
+            try:
+                payload = json.loads(msg.data.decode())
+            except (ValueError, UnicodeDecodeError) as e:
+                logger.error("action=web_message_broken error=%s", str(e))
+                await msg.term()
+                return
+
+            if isinstance(payload, dict):
+                items = payload.get("records")
+                source = str(payload.get("source") or "").strip() or DEFAULT_SOURCE
+                profile = str(payload.get("profile") or "").strip()
+            else:
+                items = payload
+                source = DEFAULT_SOURCE
+                profile = ""
+
+            if not isinstance(items, list):
+                logger.error("action=web_message_broken error=records is not a list")
+                await msg.term()
+                return
+
             loop = asyncio.get_running_loop()
             records = await loop.run_in_executor(
                 None,
-                lambda: parse_input(
-                    data=msg.data.decode(),
-                    source="web_interface",
+                lambda: build_manual_records(
+                    items=items,
+                    source=source,
+                    profile=profile,
                     dt_format=self.dt_format,
                 )
             )

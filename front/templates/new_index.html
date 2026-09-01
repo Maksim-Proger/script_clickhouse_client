@@ -103,10 +103,21 @@
             </label>
         </div>
 
-        <div class="file-upload-wrapper">
+        <label class="login-field">
+            <span>Источник</span>
+            <input type="text" id="uploadSource" placeholder="например dosgate или ipban">
+        </label>
+
+        <label class="login-field">
+            <span>Профиль</span>
+            <input type="text" id="uploadProfile" placeholder="необязательно">
+        </label>
+
+        <div class="file-upload-wrapper" style="margin-top: 12px;">
             <input type="file" id="fileInput" accept=".xlsx">
         </div>
-        <div class="dialog-actions">
+
+        <div class="dialog-actions" style="margin-top: 10px;">
             <button class="secondary-button" onclick="this.closest('dialog').close()">Отмена</button>
             <button class="primary-button" id="btnUploadFile">Загрузить</button>
         </div>
