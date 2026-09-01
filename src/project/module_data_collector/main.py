@@ -9,6 +9,7 @@ from project.module_data_collector.consumers.dg_consumer import NatsDgConsumer
 from project.module_data_collector.consumers.web_consumer import NatsWebConsumer
 from project.module_data_collector.dg_manager import DgSourceManager
 from project.module_data_collector.lifecycle import Lifecycle
+from project.module_data_collector.targeted_ab_producer import TargetedAbProducer
 from project.utils.logging_formatter import setup_logging
 
 
@@ -37,6 +38,16 @@ def main(config: dict) -> None:
             asyncio.create_task(web.start()),
             asyncio.create_task(pa_consumer.start()),
         ]
+
+        try:
+            if config.get("targeted_ab_client", {}).get("url"):
+                targeted = TargetedAbProducer(nc, config, lifecycle)
+                tasks.append(asyncio.create_task(targeted.start()))
+            else:
+                logger.info("action=targeted_ipban_skipped reason=not_configured")
+        except Exception as e:
+            logger.error("action=targeted_ipban_init_failed error=%s", str(e))
+
 
         await lifecycle.shutdown_event.wait()
 

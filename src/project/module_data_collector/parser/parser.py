@@ -1,6 +1,6 @@
+import ijson
 import json
 import re
-import ijson
 from datetime import datetime, timezone
 from typing import Any, AsyncIterator, List
 
@@ -79,7 +79,6 @@ async def stream_extract_records(
         _now: int | None = None,
         stats: dict | None = None,
 ) -> AsyncIterator[dict]:
-
     now = _now if _now is not None else int(datetime.now(timezone.utc).timestamp())
 
     async for mark in ijson.items_async(reader, "marks.item"):
@@ -90,24 +89,6 @@ async def stream_extract_records(
         _extract_records(mark, result, source, profile, dt_format, filter_expired, period, now)
         for record in result:
             yield record
-
-
-# def deduplicate_records(records: list[dict]) -> list[dict]:
-#     seen: dict[tuple, dict] = {}
-#     for r in records:
-#         key = (r["ip_address"], r["source"], r["profile"])
-#         if key not in seen or r["blocked_at"] < seen[key]["blocked_at"]:
-#             seen[key] = r
-#
-#     return [
-#         {
-#             "ip_address": r["ip_address"],
-#             "first_detected": r["blocked_at"],
-#             "source": r["source"],
-#             "profile": r["profile"],
-#         }
-#         for r in seen.values()
-#     ]
 
 
 def _parse_datetime(value: Any, dt_format: str) -> str:
@@ -182,6 +163,58 @@ def build_manual_records(
     return records
 
 
+_SKIP_SAMPLES = 5
+
+
+def _skip_line(stats: dict, row: str) -> None:
+    stats["skipped"] += 1
+    if len(stats["samples"]) < _SKIP_SAMPLES:
+        stats["samples"].append(row[:64])
+
+
+def parse_targeted_pairs(
+        data: str,
+        source: str,
+        dt_format: str = "%Y-%m-%dT%H:%M:%S",
+) -> tuple[List[dict], dict]:
+    stats = {"lines": 0, "records": 0, "skipped": 0, "empty": 0, "samples": []}
+
+    if not data or not data.strip():
+        return [], stats
+
+    blocked_at = datetime.now(timezone.utc).strftime(dt_format)
+    records: List[dict] = []
+
+    for line in data.splitlines():
+        row = line.strip()
+        if not row:
+            stats["empty"] += 1
+            continue
+
+        stats["lines"] += 1
+
+        parts = row.split(",")
+        if len(parts) != 2:
+            _skip_line(stats, row)
+            continue
+
+        src_ip, dst_ip = parts[0].strip(), parts[1].strip()
+
+        if not IP_REGEX.fullmatch(src_ip) or not IP_REGEX.fullmatch(dst_ip):
+            _skip_line(stats, row)
+            continue
+
+        records.append({
+            "ip_address": src_ip,
+            "blocked_at": blocked_at,
+            "source": source,
+            "profile": dst_ip,
+        })
+
+    stats["records"] = len(records)
+    return records, stats
+
+
 def _is_in_period(blocked_at: str, period: dict) -> bool:
     try:
         dt = datetime.strptime(blocked_at, "%Y-%m-%d %H:%M:%S")
@@ -189,19 +222,3 @@ def _is_in_period(blocked_at: str, period: dict) -> bool:
         return period["from"] <= blocked_at_unix <= period["to"]
     except (ValueError, TypeError):
         return False
-
-
-# def filter_records(
-#         records: list[dict],
-#         period: dict | None = None,
-#         ip: str | None = None,
-# ) -> list[dict]:
-#     result = records
-#
-#     if period:
-#         result = [r for r in result if _is_in_period(r["blocked_at"], period)]
-#
-#     if ip:
-#         result = [r for r in result if r["ip_address"] == ip]
-#
-#     return result
