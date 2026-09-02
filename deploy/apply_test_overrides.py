@@ -5,7 +5,7 @@ from pathlib import Path
 
 OVERRIDES = Path(__file__).resolve().parent / "test_overrides"
 
-# Полная замена файла — для конфигов и auth.js, где на тесте нужен
+# Полная замена файла — для конфигов, где на тесте нужен
 # полностью свой набор значений. Правится редактированием файла
 # в test_overrides/, этот скрипт не трогается.
 FULL_COPY = [
@@ -14,7 +14,6 @@ FULL_COPY = [
     ("config/module_reputation.yaml", "src/project/config/module_reputation.yaml"),
     ("config/module_data_collector.yaml", "src/project/config/module_data_collector.yaml"),
     ("config/dg_sources.yaml", "src/project/config/dg_sources.yaml"),
-    ("auth.js", "front/scripts/auth.js"),
 ]
 
 # Точечные правки внутри файлов, которые в остальном должны остаться
@@ -70,6 +69,11 @@ LINE_PATCHES = [
             "        # except Exception as e:\n"
             "        #     logger.error(\"action=targeted_ipban_init_failed error=%s\", str(e))\n"
         ),
+    },
+    {
+        "file": "front/scripts/auth.js",
+        "prod": 'export const API_BASE = "http://10.25.86.13:8000";\n',
+        "test": 'export const API_BASE = "http://192.168.100.113:8001";\n',
     },
 ]
 
