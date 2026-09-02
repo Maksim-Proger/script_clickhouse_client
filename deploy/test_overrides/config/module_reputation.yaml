@@ -1,0 +1,13 @@
+clickhouse:
+  host: "localhost"
+  write_hosts:
+    - "localhost"
+  port: 9000
+  database: "feedgen"
+  user: "default"
+  password: ""
+
+job:
+  interval_hours: 6.0
+  retry_attempts: 3
+  retry_delay_seconds: 60
