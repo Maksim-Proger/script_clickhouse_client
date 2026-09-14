@@ -111,6 +111,86 @@
     </div>
 </dialog>
 
+<dialog id="appendDialog" class="modern-dialog">
+    <div class="dialog-content" style="min-width: 480px;">
+        <h3 id="appendTitle">Изменение списка</h3>
+        <p class="dialog-meta">Выбранные адреса будут добавлены к списку новой версией.</p>
+
+        <div class="format-options" style="margin-bottom: 15px;">
+            <label class="radio-option">
+                <input type="radio" name="appendSource" value="manual" checked>
+                <span>Вручную</span>
+            </label>
+            <label class="radio-option">
+                <input type="radio" name="appendSource" value="blocked_ips">
+                <span>Из blocked_ips</span>
+            </label>
+            <label class="radio-option">
+                <input type="radio" name="appendSource" value="reputation">
+                <span>Из репутации</span>
+            </label>
+        </div>
+
+        <div id="appendBlock_manual">
+            <label class="login-field">
+                <span>IPv4 или CIDR (по одному на строку)</span>
+                <textarea id="appendManualValues" rows="7" placeholder="1.2.3.4&#10;10.0.0.0/24"></textarea>
+            </label>
+        </div>
+
+        <div id="appendBlock_blocked_ips" class="is-hidden">
+            <label class="login-field">
+                <span>Период с</span>
+                <input type="date" id="appendChDateFrom">
+            </label>
+            <label class="login-field">
+                <span>Период по</span>
+                <input type="date" id="appendChDateTo">
+            </label>
+            <label class="login-field">
+                <span>IP адрес</span>
+                <input type="text" id="appendChIp" placeholder="например 192.168.1.1">
+            </label>
+            <label class="login-field">
+                <span>Источник</span>
+                <input type="text" id="appendChSource" placeholder="например dosgate">
+            </label>
+            <label class="login-field">
+                <span>Профиль</span>
+                <input type="text" id="appendChProfile" placeholder="название профиля">
+            </label>
+        </div>
+
+        <div id="appendBlock_reputation" class="is-hidden">
+            <label class="login-field">
+                <span>Score от</span>
+                <input type="number" id="appendRepScoreFrom" placeholder="от">
+            </label>
+            <label class="login-field">
+                <span>Score до</span>
+                <input type="number" id="appendRepScoreTo" placeholder="до">
+            </label>
+            <label class="login-field">
+                <span>IP / подсеть</span>
+                <input type="text" id="appendRepIp" placeholder="например 45.144.48.0/24">
+            </label>
+            <label class="login-field">
+                <span>ASN (через запятую)</span>
+                <input type="text" id="appendRepAsn" placeholder="например 207651, 24940">
+            </label>
+            <label class="login-field">
+                <span>Страны, ISO (через запятую)</span>
+                <input type="text" id="appendRepCountries" placeholder="например RU, DE, NL">
+            </label>
+        </div>
+
+        <div class="dialog-actions" style="margin-top: 15px;">
+            <button class="secondary-button" onclick="this.closest('dialog').close()">Отмена</button>
+            <button class="primary-button" id="btnConfirmAppend">Добавить</button>
+        </div>
+    </div>
+</dialog>
+
 <dialog id="changeMyPasswordDialog" class="modern-dialog">
     <div class="dialog-content">
         <h3>Сменить пароль</h3>

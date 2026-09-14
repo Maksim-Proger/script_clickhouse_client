@@ -908,3 +908,11 @@ tr.clickable.expanded td:first-child::before {
     background: var(--color-danger-bg);
     color: var(--color-danger);
 }
+
+.feed-history {
+    margin: 4px 0 12px 44px;
+    padding: 10px 14px;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+}
