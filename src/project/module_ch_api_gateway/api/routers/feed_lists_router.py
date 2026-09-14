@@ -1,11 +1,11 @@
+import asyncio
+import asyncpg
 import json
 import logging
 from datetime import datetime
-from typing import Optional
-
-import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
+from typing import Optional
 
 from project.module_ch_api_gateway.api.dependencies.dependencies import (
     get_ch_service,
@@ -15,13 +15,20 @@ from project.module_ch_api_gateway.api.dependencies.dependencies import (
     resolve_exclusions,
 )
 from project.module_ch_api_gateway.api.routers.reputation_router import get_reputation_service
-from project.module_ch_api_gateway.models.feed_list_schemas import FeedListCreateRequest, FeedListStatusRequest
+from project.module_ch_api_gateway.models.feed_list_schemas import (
+    FeedListAppendRequest,
+    FeedListCreateRequest,
+    FeedListStatusRequest,
+)
 from project.module_ch_api_gateway.models.filters import CHReadFilters, ReputationFilters
 from project.module_ch_api_gateway.services.clickhouse_service import apply_default_period
 from project.module_ch_api_gateway.services.feed_list_service import (
     DEFAULT_PERIOD_DAYS,
     FeedListService,
+    ListArchivedError,
+    ListBusyError,
     SourceUnavailableError,
+    build_items_from_values,
     check_source_size,
 )
 
@@ -40,7 +47,7 @@ def _require_db(service: FeedListService) -> None:
 
 
 async def _get_list_or_404(service: FeedListService, list_id: int) -> dict:
-    row = await service.repo.get_list(list_id)
+    row = await service.repo.get_catalog_row(list_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Список не найден")
     return service.serialize_list(row)
@@ -62,12 +69,12 @@ def _check_period_limit(filters: CHReadFilters) -> None:
         )
 
 
-def _source_filters(filters, exclude_lists: Optional[list[dict]]) -> dict:
+def _source_filters(source: str, filters, exclude_lists: Optional[list[dict]]) -> dict:
     clean = filters.model_dump(exclude_none=True)
     clean.pop("search_id", None)
     clean.pop("page", None)
     clean.pop("page_size", None)
-    result = {"filters": clean}
+    result = {"source": source, "filters": clean}
     if exclude_lists:
         result["exclude_lists"] = [{"id": l["id"], "version": l["version"]} for l in exclude_lists]
     return result
@@ -82,7 +89,7 @@ def _json_default(value):
 @router.get("/")
 async def list_feed_lists(
         search: Optional[str] = Query(None, max_length=200),
-        status: Optional[str] = Query(None, pattern="^(creating|pending_sync|active|archived|failed|sync_failed)$"),
+        status: Optional[str] = Query(None, pattern="^(active|archived)$"),
         page: int = Query(1, ge=1),
         page_size: int = Query(50, ge=1, le=500),
         service: FeedListService = Depends(get_feed_list_service),
@@ -139,7 +146,7 @@ async def create_feed_list(
 
             return await service.create_background(
                 body.name, body.description, created_by, "reputation",
-                _source_filters(filters, exclude_lists), build,
+                _source_filters("reputation", filters, exclude_lists), build,
             )
 
         filters = body.blocked_ips_filters or CHReadFilters()
@@ -153,7 +160,7 @@ async def create_feed_list(
 
         return await service.create_background(
             body.name, body.description, created_by, "blocked_ips",
-            _source_filters(filters, exclude_lists), build,
+            _source_filters("blocked_ips", filters, exclude_lists), build,
         )
 
     except asyncpg.UniqueViolationError:
@@ -184,7 +191,7 @@ async def get_feed_list_items(
 ):
     _require_db(service)
     meta = await _get_list_or_404(service, list_id)
-    rows = await service.repo.get_items_page(list_id, meta["version"], page, page_size)
+    rows = await service.repo.get_items_page(list_id, meta["current_version"], page, page_size)
     total = meta["item_count"]
     return {
         "data": [dict(r) for r in rows],
@@ -192,7 +199,7 @@ async def get_feed_list_items(
         "page": page,
         "page_size": page_size,
         "total_pages": (total + page_size - 1) // page_size if total > 0 else 1,
-        "version": meta["version"],
+        "version": meta["current_version"],
         "status": meta["status"],
         "updated_at": meta["updated_at"],
     }
@@ -207,7 +214,7 @@ async def export_feed_list(
 ):
     _require_db(service)
     meta = await _get_list_or_404(service, list_id)
-    if meta["status"] != "active":
+    if meta["status"] != "active" or meta["current_version"] is None:
         raise HTTPException(status_code=409, detail="Список не активен, выгрузка недоступна")
 
     logger.info(
@@ -217,7 +224,7 @@ async def export_feed_list(
 
     if format == "txt":
         async def stream_txt():
-            async for chunk in service.repo.iter_items(list_id, meta["version"]):
+            async for chunk in service.repo.iter_items(list_id, meta["current_version"]):
                 yield "\n".join(r["value"] for r in chunk) + "\n"
 
         return StreamingResponse(
@@ -225,14 +232,14 @@ async def export_feed_list(
             media_type="text/plain; charset=utf-8",
             headers={
                 "Content-Disposition":
-                    f'attachment; filename="feed_list_{list_id}_v{meta["version"]}.txt"'
+                    f'attachment; filename="feed_list_{list_id}_v{meta["current_version"]}.txt"'
             },
         )
 
     async def stream_json():
         yield '{"list": ' + json.dumps(meta, ensure_ascii=False, default=_json_default) + ', "items": ['
         first = True
-        async for chunk in service.repo.iter_items(list_id, meta["version"]):
+        async for chunk in service.repo.iter_items(list_id, meta["current_version"]):
             text = ",".join(json.dumps(dict(r), ensure_ascii=False, default=_json_default) for r in chunk)
             yield text if first else "," + text
             first = False
@@ -250,34 +257,14 @@ async def set_feed_list_status(
 ):
     _require_db(service)
     meta = await _get_list_or_404(service, list_id)
-    if meta["status"] not in ("active", "archived"):
+    if meta["busy"] or meta["current_version"] is None:
         raise HTTPException(status_code=409, detail="Список ещё не готов, смена статуса недоступна")
-    row = await service.repo.set_status(list_id, body.status)
+    await service.repo.set_status(list_id, body.status)
     logger.info(
         "action=feed_list_status_changed id=%d status=%s user=%s",
         list_id, body.status, _user_key(user),
     )
-    return service.serialize_list(row)
-
-
-@router.post("/{list_id}/retry-sync")
-async def retry_feed_list_sync(
-        list_id: int,
-        service: FeedListService = Depends(get_feed_list_service),
-        user=Depends(get_interactive_user),
-):
-    _require_db(service)
-    meta = await _get_list_or_404(service, list_id)
-    if meta["status"] != "sync_failed":
-        raise HTTPException(
-            status_code=409,
-            detail="Повтор синхронизации доступен только для несинхронизированных списков",
-        )
-    row = await service.repo.retry_sync(list_id)
-    if row is None:
-        raise HTTPException(status_code=409, detail="Статус списка уже изменился, обновите страницу")
-    logger.info("action=feed_list_sync_retried id=%d user=%s", list_id, _user_key(user))
-    return service.serialize_list(row)
+    return service.serialize_list(await service.repo.get_catalog_row(list_id))
 
 
 @router.delete("/{list_id}")
@@ -288,7 +275,7 @@ async def delete_feed_list(
 ):
     _require_db(service)
     meta = await _get_list_or_404(service, list_id)
-    if meta["status"] in ("creating", "pending_sync"):
+    if meta["busy"]:
         raise HTTPException(
             status_code=409,
             detail="Список ещё обрабатывается, дождитесь завершения",
@@ -296,3 +283,96 @@ async def delete_feed_list(
     await service.delete_list(list_id)
     logger.info("action=feed_list_deleted id=%d user=%s", list_id, _user_key(user))
     return {"ok": True}
+
+
+@router.get("/{list_id}/versions")
+async def get_feed_list_versions(
+        list_id: int,
+        service: FeedListService = Depends(get_feed_list_service),
+        user=Depends(get_current_user),
+):
+    _require_db(service)
+    meta = await _get_list_or_404(service, list_id)
+    history = await service.repo.get_history(list_id)
+    return {"current_version": meta["current_version"], "data": [dict(r) for r in history]}
+
+
+@router.post("/{list_id}/versions/{version}/restore")
+async def restore_feed_list_version(
+        list_id: int,
+        version: int,
+        service: FeedListService = Depends(get_feed_list_service),
+        user=Depends(get_interactive_user),
+):
+    _require_db(service)
+    try:
+        result = await service.restore_version(list_id, version)
+    except (ListBusyError, ListArchivedError) as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    logger.info("action=feed_list_version_restore id=%d version=%d user=%s", list_id, version, _user_key(user))
+    return result
+
+
+@router.post("/{list_id}/append")
+async def append_feed_list(
+        request: Request,
+        list_id: int,
+        body: FeedListAppendRequest,
+        service: FeedListService = Depends(get_feed_list_service),
+        ch_service=Depends(get_ch_service),
+        reputation_service=Depends(get_reputation_service),
+        user=Depends(get_interactive_user),
+):
+    _require_db(service)
+    meta = await _get_list_or_404(service, list_id)
+    created_by = _user_key(user)
+
+    try:
+        if body.source == "manual":
+            if not body.values:
+                raise ValueError("Нужно передать значения (values)")
+            items = await asyncio.to_thread(build_items_from_values, body.values)
+            check_source_size(meta["item_count"] + len(items))
+            source_filters = {"source": "manual", "values_count": len(items)}
+
+            async def build(lid, version):
+                await service.repo.merge_items(lid, version, items)
+
+        elif body.source == "reputation":
+            filters = body.reputation_filters or ReputationFilters()
+            filters.only_ip = False
+            exclude_lists = await resolve_exclusions(request, filters.exclude_list_ids)
+            check_source_size(meta["item_count"] + await reputation_service.count_snapshot(filters))
+            source_filters = _source_filters("reputation", filters, exclude_lists)
+
+            async def build(lid, version):
+                await service.build_from_reputation_snapshot(
+                    lid, version, reputation_service, filters, exclude_lists, merge=True,
+                )
+
+        else:
+            filters = body.blocked_ips_filters or CHReadFilters()
+            apply_default_period(filters, DEFAULT_PERIOD_DAYS)
+            _check_period_limit(filters)
+            exclude_lists = await resolve_exclusions(request, filters.exclude_list_ids)
+            check_source_size(meta["item_count"] + await ch_service.count_unique_ips(filters))
+            source_filters = _source_filters("blocked_ips", filters, exclude_lists)
+
+            async def build(lid, version):
+                await service.build_from_ch(lid, version, ch_service, filters, exclude_lists, merge=True)
+
+        result = await service.append_to_list(list_id, source_filters, build, created_by)
+
+    except (ListBusyError, ListArchivedError) as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except SourceUnavailableError:
+        raise HTTPException(status_code=503, detail="Источник данных временно недоступен")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    logger.info("action=feed_list_append id=%d source=%s user=%s", list_id, body.source, created_by)
+    return result
