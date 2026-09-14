@@ -59,6 +59,13 @@ function formatDate(s) {
     return String(s).split(".")[0].replace("T", " ");
 }
 
+function errorText(detail, status) {
+    if (Array.isArray(detail)) {
+        return detail.map(d => d.msg || JSON.stringify(d)).join("; ");
+    }
+    return detail || `HTTP ${status}`;
+}
+
 async function loadLists(page = 1) {
     currentPage = page;
     try {
@@ -153,44 +160,27 @@ function renderBadge(l) {
     if (l.pending) {
         return `<span class="badge badge--creating">Обновляется</span>`;
     }
-    if (l.status === "creating") {
-        return `<span class="badge badge--creating">Создаётся</span>`;
-    }
-    if (l.status === "pending_sync") {
-        return `<span class="badge badge--creating">Синхронизация</span>`;
-    }
-    if (l.status === "failed") {
+    if (!l.current_version) {
         return `<span class="badge badge--failed" title="${escapeHtml(l.last_error)}">Ошибка</span>`;
     }
-    if (l.status === "sync_failed") {
-        return `<span class="badge badge--failed" title="${escapeHtml(l.last_error)}">Не синхронизирован</span>`;
-    }
     if (l.status === "active") {
-        return `<span class="badge badge--active">Активен</span>`;
+        return `<span class="badge badge--active" title="${escapeHtml(l.last_error)}">Активен</span>`;
     }
     return `<span class="badge badge--inactive">Архив</span>`;
 }
 
 function renderActions(l) {
-    if (!l.current_version) {
-        return "";
-    }
-
     const lock = l.busy ? "disabled" : "";
 
-    if (l.status === "failed") {
-        return `<button class="btn btn--danger btn--small" onclick="window.deleteList(${l.id})" ${lock}>Удалить</button>`;
-    }
-
-    if (l.status === "sync_failed") {
-        return `
-            <button class="btn btn--secondary btn--small" onclick="window.retrySync(${l.id})" ${lock}>Повторить</button>
-            <button class="btn btn--danger btn--small" onclick="window.deleteList(${l.id})" ${lock}>Удалить</button>`;
+    if (!l.current_version) {
+        return l.busy
+            ? ""
+            : `<button class="btn btn--danger btn--small" onclick="window.deleteList(${l.id})">Удалить</button>`;
     }
 
     const toggleAction = l.status === "active"
-        ? `<button class="btn btn--secondary btn--small" onclick="window.setListStatus(${l.id}, 'archived')">Архив</button>`
-        : `<button class="btn btn--secondary btn--small" onclick="window.setListStatus(${l.id}, 'active')">Вернуть</button>`;
+        ? `<button class="btn btn--secondary btn--small" onclick="window.setListStatus(${l.id}, 'archived')" ${lock}>Архив</button>`
+        : `<button class="btn btn--secondary btn--small" onclick="window.setListStatus(${l.id}, 'active')" ${lock}>Вернуть</button>`;
 
     const exportActions = l.status === "active"
         ? `<button class="btn btn--secondary btn--small" onclick="window.exportList(${l.id}, 'txt')">TXT</button>
@@ -225,7 +215,7 @@ function renderHistory(listId) {
         return;
     }
 
-    const lock = list?.busy ? "disabled" : "";
+    const lock = list?.busy || list?.status !== "active" ? "disabled" : "";
     const rows = cached.data.map(v => `<tr>
         <td>v${v.version}</td>
         <td>${formatDate(v.created_at)}</td>
@@ -452,30 +442,11 @@ window.deleteList = async (listId) => {
     }
 };
 
-window.retrySync = async (listId) => {
-    try {
-        const response = await Auth.authFetch(`${Auth.API_BASE}/api/feed-lists/${listId}/retry-sync`, {
-            method: "POST"
-        });
-        if (!response.ok) {
-            const err = await response.json().catch(() => ({}));
-            throw new Error(err.detail || `HTTP ${response.status}`);
-        }
-        await loadLists(currentPage);
-    } catch (e) {
-        if (e.message !== "Unauthorized") alert(`Ошибка: ${e.message}`);
-    }
-};
-
 window.restoreVersion = async (listId, version) => {
     const list = listsById.get(listId);
     const cached = versionsByList.get(listId);
     if (!list || !cached) return;
 
-    const dropped = cached.data
-        .filter(v => v.version > version)
-        .map(v => v.version)
-        .sort((a, b) => a - b);
     const target = cached.data.find(v => v.version === version);
     if (!target) {
         alert("Список версий устарел, обновляю");
@@ -484,12 +455,17 @@ window.restoreVersion = async (listId, version) => {
         return;
     }
 
+    const dropped = [
+        ...cached.data.filter(v => v.version > version).map(v => v.version),
+        list.current_version,
+    ].sort((a, b) => a - b);
+
     const droppedText = dropped.length === 1
         ? `версия ${dropped[0]} будет удалена безвозвратно`
         : `версии ${dropped.join(", ")} будут удалены безвозвратно`;
 
-    const text = `Версия ${version} станет актуальной, в ней ${target.item_count} адресов вместо текущих ${list.item_count}.`
-        + (dropped.length ? ` Кроме того, ${droppedText}.` : "")
+    const text = `Версия ${version} станет актуальной, в ней ${target.item_count} адресов вместо текущих ${list.item_count}. `
+        + `Кроме того, ${droppedText}.`
         + `\n\nВосстановить?`;
 
     if (!confirm(text)) return;
@@ -507,13 +483,16 @@ window.restoreVersion = async (listId, version) => {
             return;
         }
         if (!response.ok) {
-            throw new Error(result.detail || `HTTP ${response.status}`);
+            throw new Error(errorText(result.detail, response.status));
         }
 
         listsById.set(listId, result);
         versionsByList.delete(listId);
         renderTable([...listsById.values()]);
         refreshExpanded();
+
+        clearTimeout(refreshTimer);
+        refreshTimer = setTimeout(() => loadLists(currentPage), 4000);
     } catch (e) {
         if (e.message !== "Unauthorized") alert(`Ошибка восстановления: ${e.message}`);
     }
@@ -536,8 +515,8 @@ function fillAppendForm(source, filters) {
     const f = filters || {};
     document.getElementById("appendManualValues").value = "";
 
-    document.getElementById("appendChDateFrom").value = (f.period?.from || "").split(" ")[0] || "";
-    document.getElementById("appendChDateTo").value = (f.period?.to || "").split(" ")[0] || "";
+    document.getElementById("appendChDateFrom").value = (f.period?.from ?? f.period?.from_date ?? "").split(" ")[0];
+    document.getElementById("appendChDateTo").value = (f.period?.to ?? f.period?.to_date ?? "").split(" ")[0];
     document.getElementById("appendChIp").value = f.ip || "";
     document.getElementById("appendChSource").value = f.source || "";
     document.getElementById("appendChProfile").value = f.profile || "";
@@ -545,8 +524,10 @@ function fillAppendForm(source, filters) {
     document.getElementById("appendRepScoreFrom").value = f.score_from ?? "";
     document.getElementById("appendRepScoreTo").value = f.score_to ?? "";
     document.getElementById("appendRepIp").value = f.ip || "";
-    document.getElementById("appendRepAsn").value = f.asn || "";
-    document.getElementById("appendRepCountries").value = f.countries || "";
+    document.getElementById("appendRepAsn").value = (f.asn || []).join(", ");
+    document.getElementById("appendRepAsnExclude").checked = !!f.asn_exclude;
+    document.getElementById("appendRepCountries").value = (f.country || []).join(", ");
+    document.getElementById("appendRepCountryExclude").checked = !!f.country_exclude;
 }
 
 function collectAppendPayload() {
@@ -583,14 +564,27 @@ function collectAppendPayload() {
         return payload;
     }
 
+    const parseList = value => value.split(",").map(s => s.trim()).filter(Boolean);
+
     const filters = {};
     const scoreFrom = appendFilterValue("appendRepScoreFrom");
     const scoreTo = appendFilterValue("appendRepScoreTo");
     if (scoreFrom) filters.score_from = Number(scoreFrom);
     if (scoreTo) filters.score_to = Number(scoreTo);
     if (appendFilterValue("appendRepIp")) filters.ip = appendFilterValue("appendRepIp");
-    if (appendFilterValue("appendRepAsn")) filters.asn = appendFilterValue("appendRepAsn");
-    if (appendFilterValue("appendRepCountries")) filters.countries = appendFilterValue("appendRepCountries");
+
+    const asn = parseList(appendFilterValue("appendRepAsn")).map(Number).filter(Number.isFinite);
+    if (asn.length) {
+        filters.asn = asn;
+        filters.asn_exclude = document.getElementById("appendRepAsnExclude").checked;
+    }
+
+    const country = parseList(appendFilterValue("appendRepCountries")).map(c => c.toUpperCase());
+    if (country.length) {
+        filters.country = country;
+        filters.country_exclude = document.getElementById("appendRepCountryExclude").checked;
+    }
+
     payload.reputation_filters = filters;
     return payload;
 }
@@ -641,7 +635,7 @@ async function submitAppend() {
             return;
         }
         if (!response.ok) {
-            throw new Error(result.detail || `HTTP ${response.status}`);
+            throw new Error(errorText(result.detail, response.status));
         }
 
         listsById.set(appendListId, result);
@@ -686,7 +680,7 @@ document.getElementById("btnConfirmCreateManual").addEventListener("click", asyn
             source_type: "manual",
             values,
         });
-        alert(`Список "${created.name}" создан, элементов: ${created.item_count}`);
+        alert(`Список "${created.name}" создаётся, статус можно смотреть в каталоге`);
         createManualDialog.close();
         await loadLists(1);
     } catch (e) {

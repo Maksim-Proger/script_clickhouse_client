@@ -70,7 +70,7 @@ def _check_period_limit(filters: CHReadFilters) -> None:
 
 
 def _source_filters(source: str, filters, exclude_lists: Optional[list[dict]]) -> dict:
-    clean = filters.model_dump(exclude_none=True)
+    clean = filters.model_dump(exclude_none=True, by_alias=True)
     clean.pop("search_id", None)
     clean.pop("page", None)
     clean.pop("page_size", None)
