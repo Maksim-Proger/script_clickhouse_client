@@ -1,12 +1,14 @@
 import asyncio
+import asyncpg
 import ipaddress
 import json
 import logging
 import uuid
+from contextlib import aclosing
 from datetime import datetime, timezone
 from typing import Any, Optional
-from contextlib import aclosing
 
+from project.module_ch_api_gateway.infrastructure.feed_list_archive import dump_version, load_version
 from project.module_ch_api_gateway.infrastructure.feed_list_mirror_client import FeedListMirrorClient
 from project.module_ch_api_gateway.infrastructure.feed_list_repo import FeedListRepository
 
@@ -31,7 +33,7 @@ MIRROR_SYNC_BATCH = 5
 MIRROR_COUNT_RETRY_DELAY = 2.0
 MIRROR_BACKOFF_MINUTES = (1, 2, 5, 10, 30)
 MIRROR_MAX_ATTEMPTS = 10
-SYNC_FAILED_TTL_DAYS = 7
+HISTORY_DEPTH = 3
 
 _DT_FORMATS = ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d")
 
@@ -42,6 +44,14 @@ _ITEM_FIELDS = (
 
 
 class SessionExpiredError(Exception):
+    pass
+
+
+class ListBusyError(Exception):
+    pass
+
+
+class ListArchivedError(Exception):
     pass
 
 
@@ -216,14 +226,14 @@ class FeedListService:
         if missing:
             raise ValueError(f"Списки не найдены: {missing}")
 
-        inactive = [r["name"] for r in rows if r["status"] != "active"]
+        inactive = [r["name"] for r in rows if r["status"] != "active" or r["version"] is None]
         if inactive:
             raise ValueError(f"Списки не активны и не могут применяться как исключения: {', '.join(inactive)}")
 
         return [{"id": r["id"], "version": r["version"], "name": r["name"]} for r in rows]
 
     async def sync_mirror(self, row) -> bool:
-        list_id, version = row["id"], row["version"]
+        list_id, version = row["list_id"], row["version"]
         cursor = row["mirror_cursor"]
         updated_at = row["mirror_updated_at"]
 
@@ -231,7 +241,7 @@ class FeedListService:
             if cursor is None:
                 await self.mirror.clear_version(list_id, version)
                 updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
-                await self.repo.start_mirror_sync(list_id, updated_at)
+                await self.repo.start_mirror_sync(list_id, version, updated_at)
                 cursor = ""
 
             host = self.mirror.pick_write_host()
@@ -243,7 +253,7 @@ class FeedListService:
                 )
                 await self.mirror.insert_rows(host, mirror_rows, token)
                 cursor = chunk[-1]["value"]
-                await self.repo.save_mirror_cursor(list_id, cursor)
+                await self.repo.save_mirror_cursor(list_id, version, cursor)
 
             ch_count = await self.mirror.count(list_id, version)
             if ch_count != row["item_count"]:
@@ -256,7 +266,7 @@ class FeedListService:
                     f"в ClickHouse {ch_count}"
                 )
 
-            await self.repo.activate_list(list_id)
+            await self.publish_version(list_id, version)
             logger.info(
                 "action=feed_list_mirror_synced id=%d version=%d rows=%d host=%s",
                 list_id, version, ch_count, host,
@@ -266,14 +276,14 @@ class FeedListService:
         except Exception as e:
             attempts = row["sync_attempts"] + 1
             if attempts >= MIRROR_MAX_ATTEMPTS:
-                await self.repo.mark_sync_failed(list_id, str(e), attempts)
+                await self.fail_version(list_id, version, str(e))
                 logger.error(
                     "action=feed_list_mirror_gave_up id=%d attempts=%d error=%s",
                     list_id, attempts, str(e),
                 )
             else:
                 delay = _mirror_backoff_minutes(attempts)
-                await self.repo.schedule_mirror_retry(list_id, str(e), attempts, delay)
+                await self.repo.schedule_mirror_retry(list_id, version, str(e), attempts, delay)
                 logger.warning(
                     "action=feed_list_mirror_attempt_failed id=%d attempts=%d "
                     "retry_in_min=%d error=%s",
@@ -281,65 +291,199 @@ class FeedListService:
                 )
             return False
 
-    async def process_deletion(self, row) -> None:
-        list_id, version = row["id"], row["version"]
-        try:
-            await self.mirror.clear_version(list_id, version)
-
-            for _ in range(DELETION_CHUNKS_PER_TICK):
-                deleted = await self.repo.delete_items_chunk(list_id, DELETION_CHUNK)
-                if deleted < DELETION_CHUNK:
-                    await self.repo.purge_list(list_id)
-                    logger.info("action=feed_list_purged id=%d version=%d", list_id, version)
-                    return
-
-            await self.repo.continue_deletion(list_id)
-            logger.info("action=feed_list_purge_continue id=%d", list_id)
-
-        except Exception as e:
-            attempts = row["sync_attempts"] + 1
-            delay = _mirror_backoff_minutes(attempts)
-            await self.repo.schedule_mirror_retry(list_id, str(e), attempts, delay)
-            logger.warning(
-                "action=feed_list_purge_failed id=%d attempts=%d retry_in_min=%d error=%s",
-                list_id, attempts, delay, str(e),
-            )
-
     async def delete_list(self, list_id: int) -> None:
         await self.repo.mark_for_deletion(list_id, DELETION_GRACE_MINUTES)
+
+    async def publish_version(self, list_id: int, version: int) -> None:
+        card = await self.repo.get_list(list_id)
+        if card is None:
+            return
+        prev = card["current_version"]
+
+        blob = None
+        if prev is not None and prev < version:
+            async with self.repo.db.pool.acquire() as conn:
+                blob = await dump_version(conn, list_id, prev)
+
+        async with self.repo.db.pool.acquire() as conn:
+            async with conn.transaction():
+                await conn.execute(
+                    "UPDATE feed_lists SET current_version = $2, last_error = NULL, "
+                    "updated_at = now() WHERE id = $1",
+                    list_id, version,
+                )
+                await conn.execute(
+                    "UPDATE feed_list_versions SET status = 'ready', published_at = now(), "
+                    "blob = NULL, blob_size = NULL, purge_after = NULL, "
+                    "next_attempt_at = NULL, last_error = NULL "
+                    "WHERE list_id = $1 AND version = $2",
+                    list_id, version,
+                )
+                if prev is not None and prev < version:
+                    await conn.execute(
+                        "UPDATE feed_list_versions SET status = 'history', "
+                        "blob = $3, blob_size = $4, "
+                        "purge_after = now() + make_interval(mins => $5) "
+                        "WHERE list_id = $1 AND version = $2",
+                        list_id, prev, blob, len(blob), DELETION_GRACE_MINUTES,
+                    )
+                if prev is not None and prev > version:
+                    await conn.execute(
+                        "UPDATE feed_list_versions SET status = 'deleting', "
+                        "next_attempt_at = now() + make_interval(mins => $3) "
+                        "WHERE list_id = $1 AND version > $2",
+                        list_id, version, DELETION_GRACE_MINUTES,
+                    )
+                await self._rotate_history(conn, list_id)
+
+    async def _rotate_history(self, conn, list_id: int) -> None:
+        await conn.execute(
+            """
+            UPDATE feed_list_versions
+            SET status = 'deleting', next_attempt_at = now() + make_interval(mins => $3)
+            WHERE list_id = $1 AND status = 'history'
+              AND version NOT IN (
+                  SELECT version FROM feed_list_versions
+                  WHERE list_id = $1 AND status = 'history'
+                  ORDER BY version DESC LIMIT $2
+              )
+            """,
+            list_id, HISTORY_DEPTH, DELETION_GRACE_MINUTES,
+        )
+
+    async def fail_version(self, list_id: int, version: int, error: str) -> None:
+        v = await self.repo.get_version(list_id, version)
+        if v is not None and v["blob"] is not None:
+            await self.repo.revert_to_history(list_id, version, DELETION_GRACE_MINUTES)
+        else:
+            await self.repo.mark_version_deleting(list_id, version, 0)
+        await self.repo.set_list_error(list_id, error)
+
+    async def fail_stale_versions(self) -> None:
+        for row in await self.repo.get_building_versions():
+            await self.fail_version(row["list_id"], row["version"], "Сборка прервана перезапуском сервиса")
+
+    async def purge_version(self, row) -> None:
+        list_id, version = row["list_id"], row["version"]
+        try:
+            await self.mirror.clear_version(list_id, version)
+            for _ in range(DELETION_CHUNKS_PER_TICK):
+                deleted = await self.repo.delete_items_chunk(list_id, version, "history", DELETION_CHUNK)
+                if deleted < DELETION_CHUNK:
+                    await self.repo.clear_purge_after(list_id, version)
+                    return
+        except Exception as e:
+            logger.warning("action=feed_list_version_purge_failed id=%d version=%d error=%s",
+                           list_id, version, str(e))
+
+    async def delete_version(self, row) -> None:
+        list_id, version = row["list_id"], row["version"]
+        try:
+            await self.mirror.clear_version(list_id, version)
+            for _ in range(DELETION_CHUNKS_PER_TICK):
+                deleted = await self.repo.delete_items_chunk(list_id, version, "deleting", DELETION_CHUNK)
+                if deleted < DELETION_CHUNK:
+                    await self.repo.delete_version_record(list_id, version)
+                    return
+        except Exception as e:
+            logger.warning("action=feed_list_version_delete_failed id=%d version=%d error=%s",
+                           list_id, version, str(e))
+
+    async def _guard_editable(self, list_id: int) -> asyncpg.Record:
+        card = await self.repo.get_list(list_id)
+        if card is None:
+            raise LookupError("Список не найден")
+        if card["status"] == "archived":
+            raise ListArchivedError("Список в архиве, верните его в активные, чтобы изменить")
+        if await self.repo.find_active_build(list_id):
+            raise ListBusyError("Список сейчас обновляется, дождитесь завершения")
+        return card
+
+    def _run_build(self, list_id: int, version: int, builder) -> None:
+        async def runner():
+            try:
+                await builder()
+                count = await self.repo.finalize_version(list_id, version)
+                if count == 0:
+                    await self.fail_version(list_id, version, "Выборка пуста")
+            except Exception as e:
+                logger.error("action=feed_list_build_failed id=%d version=%d error=%s",
+                             list_id, version, str(e))
+                await self.fail_version(list_id, version, str(e))
+
+        task = asyncio.create_task(runner())
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+
+    async def append_to_list(self, list_id: int, source_filters: dict, builder, created_by: str) -> dict:
+        card = await self._guard_editable(list_id)
+        base = card["current_version"]
+        if base is None:
+            raise ValueError("У списка нет актуальной версии, изменение недоступно")
+
+        try:
+            async with self.repo.db.pool.acquire() as conn:
+                async with conn.transaction():
+                    new = await self.repo.next_version_number(conn, list_id)
+                    await self.repo.create_version(
+                        conn, list_id, new, "building", "append",
+                        json.dumps(source_filters, ensure_ascii=False, default=str), created_by,
+                    )
+        except asyncpg.UniqueViolationError:
+            raise ListBusyError("Список сейчас обновляется, дождитесь завершения")
+
+        async def build():
+            await self.repo.copy_items(list_id, base, new)
+            await builder(list_id, new)
+
+        self._run_build(list_id, new, build)
+        return self.serialize_list(await self.repo.get_catalog_row(list_id))
+
+    async def restore_version(self, list_id: int, version: int) -> dict:
+        await self._guard_editable(list_id)
+        try:
+            started = await self.repo.start_restore(list_id, version)
+        except asyncpg.UniqueViolationError:
+            raise ListBusyError("Список сейчас обновляется, дождитесь завершения")
+        if started is None:
+            raise LookupError("Версия не найдена")
+
+        async def build():
+            await self.repo.delete_items(list_id, version)
+            async with self.repo.db.pool.acquire() as conn:
+                await load_version(conn, list_id, version, started["blob"])
+
+        self._run_build(list_id, version, build)
+        return self.serialize_list(await self.repo.get_catalog_row(list_id))
 
     async def create_manual(self, name: str, description: str, created_by: str, values: list[str]) -> dict:
         items = await asyncio.to_thread(build_items_from_values, values)
         if not items:
             raise ValueError("Выборка пуста, список не создан")
 
-        row = await self.repo.create_list(
-            name=name.strip(),
-            description=description.strip(),
-            created_by=created_by,
-            source_type="manual",
-            source_filters=json.dumps({"values_count": len(items)}, ensure_ascii=False),
-            status="creating",
-        )
-        try:
-            await self.repo.insert_items(row["id"], row["version"], items)
-            finalized = await self.repo.finalize_list(row["id"])
-
-        except Exception as e:
-            await self.repo.fail_list(row["id"], str(e))
-            try:
-                await self.repo.delete_items(row["id"], row["version"])
-            except Exception as cleanup_err:
-                logger.error(
-                    "action=feed_list_items_cleanup_failed id=%d error=%s", row["id"], str(cleanup_err)
+        async with self.repo.db.pool.acquire() as conn:
+            async with conn.transaction():
+                row = await self.repo.create_list(
+                    conn, name.strip(), description.strip(), created_by, "manual",
                 )
+                await self.repo.create_version(
+                    conn, row["id"], 1, "building", "create",
+                    json.dumps({"source": "manual", "values_count": len(items)}, ensure_ascii=False),
+                    created_by,
+                )
+
+        try:
+            await self.repo.insert_items(row["id"], 1, items)
+            await self.repo.finalize_version(row["id"], 1)
+        except Exception as e:
+            await self.fail_version(row["id"], 1, str(e))
             raise
 
         logger.info(
             "action=feed_list_created id=%d name=%s source_type=manual items=%d created_by=%s",
             row["id"], row["name"], len(items), created_by,
         )
-        return self.serialize_list(finalized)
+        return self.serialize_list(await self.repo.get_catalog_row(row["id"]))
 
     async def create_background(
             self,
@@ -350,77 +494,57 @@ class FeedListService:
             source_filters: dict,
             builder,
     ) -> dict:
-        row = await self.repo.create_list(
-            name=name.strip(),
-            description=description.strip(),
-            created_by=created_by,
-            source_type=source_type,
-            source_filters=json.dumps(source_filters, ensure_ascii=False, default=str),
-            status="creating",
-        )
-        list_id, version = row["id"], row["version"]
-
-        async def runner():
-            try:
-                await builder(list_id, version)
-                finalized = await self.repo.finalize_list(list_id)
-                logger.info(
-                    "action=feed_list_build_done id=%d items=%d",
-                    list_id, finalized["item_count"] if finalized else -1,
+        async with self.repo.db.pool.acquire() as conn:
+            async with conn.transaction():
+                row = await self.repo.create_list(
+                    conn, name.strip(), description.strip(), created_by, source_type,
                 )
+                await self.repo.create_version(
+                    conn, row["id"], 1, "building", "create",
+                    json.dumps(source_filters, ensure_ascii=False, default=str), created_by,
+                )
+        list_id = row["id"]
 
-            except Exception as e:
-                logger.error("action=feed_list_build_failed id=%d error=%s", list_id, str(e))
-                try:
-                    await self.repo.fail_list(list_id, str(e))
-                except Exception as db_err:
-                    logger.error("action=feed_list_fail_mark_error id=%d error=%s", list_id, str(db_err))
-                try:
-                    deleted = await self.repo.delete_items(list_id, version)
-                    if deleted:
-                        logger.info("action=feed_list_items_cleanup id=%d deleted=%d", list_id, deleted)
-                except Exception as cleanup_err:
-                    logger.error(
-                        "action=feed_list_items_cleanup_failed id=%d error=%s", list_id, str(cleanup_err)
-                    )
-
-        task = asyncio.create_task(runner())
-        self._background_tasks.add(task)
-        task.add_done_callback(self._background_tasks.discard)
+        self._run_build(list_id, 1, lambda: builder(list_id, 1))
         logger.info(
             "action=feed_list_build_started id=%d name=%s source_type=%s created_by=%s",
             list_id, row["name"], source_type, created_by,
         )
-        return self.serialize_list(row)
+        return self.serialize_list(await self.repo.get_catalog_row(list_id))
 
     async def build_from_ch(self,
                             list_id: int,
                             version: int,
                             ch_service,
                             filters,
-                            exclude_lists: Optional[list[dict]] = None) -> None:
+                            exclude_lists: Optional[list[dict]] = None,
+                            merge: bool = False) -> None:
+        insert = self.repo.merge_items if merge else self.repo.insert_items
         async for rows in ch_service.iter_unique_ip_rows(filters, CHUNK_SIZE, exclude_lists):
             tuples = await asyncio.to_thread(_rows_to_tuples, rows, _blocked_row_to_item)
-            await self.repo.insert_items(list_id, version, tuples)
+            await insert(list_id, version, tuples)
 
     async def build_from_reputation_rows(self,
                                          list_id: int,
                                          version: int,
-                                         rows: list[dict]) -> None:
+                                         rows: list[dict],
+                                         merge: bool = False) -> None:
         if not rows:
             return
         tuples = await asyncio.to_thread(_rows_to_tuples, rows, _reputation_row_to_item)
-        await self.repo.insert_items(list_id, version, tuples)
+        insert = self.repo.merge_items if merge else self.repo.insert_items
+        await insert(list_id, version, tuples)
 
     async def build_from_reputation_snapshot(self,
                                              list_id: int,
                                              version: int,
                                              reputation_service,
                                              filters,
-                                             exclude_lists: Optional[list[dict]] = None) -> None:
+                                             exclude_lists: Optional[list[dict]] = None,
+                                             merge: bool = False) -> None:
         async for rows in reputation_service.iter_snapshot_rows(
                 filters, CHUNK_SIZE, exclude_lists=exclude_lists):
-            await self.build_from_reputation_rows(list_id, version, rows)
+            await self.build_from_reputation_rows(list_id, version, rows, merge=merge)
 
     async def build_search(self,
                            owner: str,
@@ -521,6 +645,13 @@ class FeedListService:
     @staticmethod
     def serialize_list(row) -> dict:
         data = dict(row)
+        pending_version = data.pop("pending_version", None)
+        pending_status = data.pop("pending_status", None)
+        data["busy"] = pending_version is not None
+        data["pending"] = (
+            {"version": pending_version, "status": pending_status}
+            if pending_version is not None else None
+        )
         if isinstance(data.get("source_filters"), str):
             try:
                 data["source_filters"] = json.loads(data["source_filters"])
@@ -548,15 +679,16 @@ async def mirror_sync_loop(service: "FeedListService", interval: int = MIRROR_SY
             if not service.is_available:
                 continue
 
-            rows = await service.repo.get_lists_for_mirror_sync(MIRROR_SYNC_BATCH)
-            for row in rows:
+            for row in await service.repo.get_versions_to_sync(MIRROR_SYNC_BATCH):
                 await service.sync_mirror(row)
 
-            await service.repo.expire_sync_failed(SYNC_FAILED_TTL_DAYS)
+            for row in await service.repo.get_versions_to_purge(MIRROR_SYNC_BATCH):
+                await service.purge_version(row)
 
-            deletions = await service.repo.get_lists_for_deletion(MIRROR_SYNC_BATCH)
-            for row in deletions:
-                await service.process_deletion(row)
+            for row in await service.repo.get_versions_to_delete(MIRROR_SYNC_BATCH):
+                await service.delete_version(row)
+
+            await service.repo.delete_empty_deleting_lists()
 
         except asyncio.CancelledError:
             break

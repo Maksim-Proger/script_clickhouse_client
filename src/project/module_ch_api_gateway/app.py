@@ -35,7 +35,7 @@ def create_app(config: dict) -> FastAPI:
             await app.state.user_service.seed_admin()
             await app.state.user_service.load_revoked_jtis()
             app.state.user_service.start_cleanup_loop()
-            await app.state.feed_list_service.repo.fail_stale_lists()
+            await app.state.feed_list_service.fail_stale_versions()
 
         connected = await app.state.db.connect_safe()
         if connected:

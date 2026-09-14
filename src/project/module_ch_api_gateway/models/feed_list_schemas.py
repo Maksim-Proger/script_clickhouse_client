@@ -1,6 +1,5 @@
-from typing import Literal, Optional
-
 from pydantic import BaseModel, Field
+from typing import Literal, Optional
 
 from project.module_ch_api_gateway.models.filters import CHReadFilters, ReputationFilters
 
@@ -16,3 +15,10 @@ class FeedListCreateRequest(BaseModel):
 
 class FeedListStatusRequest(BaseModel):
     status: Literal["active", "archived"]
+
+
+class FeedListAppendRequest(BaseModel):
+    source: Literal["manual", "blocked_ips", "reputation"]
+    values: Optional[list[str]] = Field(None, max_length=1_000_000)
+    blocked_ips_filters: Optional[CHReadFilters] = None
+    reputation_filters: Optional[ReputationFilters] = None

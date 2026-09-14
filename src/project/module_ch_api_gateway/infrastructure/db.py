@@ -60,11 +60,9 @@ CREATE TABLE IF NOT EXISTS feed_lists (
     created_by     VARCHAR(150) NOT NULL,
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-    status         VARCHAR(20) NOT NULL DEFAULT 'creating',
-    source_type    VARCHAR(30) NOT NULL,
-    source_filters JSONB NOT NULL DEFAULT '{}'::jsonb,
-    version        INT NOT NULL DEFAULT 1,
-    item_count     BIGINT NOT NULL DEFAULT 0,
+    status          VARCHAR(20) NOT NULL DEFAULT 'active',
+    source_type     VARCHAR(30) NOT NULL,
+    current_version INT,
     last_error     TEXT
 );
 """
@@ -88,14 +86,49 @@ CREATE TABLE IF NOT EXISTS feed_list_items (
 );
 """
 
-CREATE_FEED_LIST_ITEMS_INDEX = """
-CREATE INDEX IF NOT EXISTS idx_feed_list_items_list_version ON feed_list_items (list_id, version);
+CREATE_FEED_LIST_VERSIONS_TABLE = """
+CREATE TABLE IF NOT EXISTS feed_list_versions (
+    list_id           INT NOT NULL REFERENCES feed_lists(id) ON DELETE CASCADE,
+    version           INT NOT NULL,
+    status            VARCHAR(20) NOT NULL,
+    item_count        BIGINT NOT NULL DEFAULT 0,
+    source_filters    JSONB NOT NULL DEFAULT '{}'::jsonb,
+    build_kind        VARCHAR(20) NOT NULL DEFAULT 'create',
+    created_by        VARCHAR(150) NOT NULL,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    published_at      TIMESTAMPTZ,
+    blob              BYTEA,
+    blob_size         BIGINT,
+    last_error        TEXT,
+    mirror_cursor     VARCHAR(64),
+    mirror_updated_at TIMESTAMP,
+    sync_attempts     INT NOT NULL DEFAULT 0,
+    next_attempt_at   TIMESTAMPTZ,
+    purge_after       TIMESTAMPTZ,
+    PRIMARY KEY (list_id, version)
+);
 """
 
-CREATE_FEED_LISTS_SYNC_INDEX = """
-CREATE INDEX IF NOT EXISTS idx_feed_lists_pending_sync
-    ON feed_lists (next_attempt_at)
-    WHERE status = 'pending_sync';
+CREATE_FLV_ONE_BUILD_INDEX = """
+CREATE UNIQUE INDEX IF NOT EXISTS idx_flv_one_build
+    ON feed_list_versions (list_id)
+    WHERE status IN ('building', 'pending_sync');
+"""
+
+CREATE_FLV_NEXT_ATTEMPT_INDEX = """
+CREATE INDEX IF NOT EXISTS idx_flv_next_attempt
+    ON feed_list_versions (next_attempt_at)
+    WHERE status IN ('pending_sync', 'deleting');
+"""
+
+CREATE_FLV_PURGE_INDEX = """
+CREATE INDEX IF NOT EXISTS idx_flv_purge
+    ON feed_list_versions (purge_after)
+    WHERE purge_after IS NOT NULL;
+"""
+
+CREATE_FEED_LIST_ITEMS_INDEX = """
+CREATE INDEX IF NOT EXISTS idx_feed_list_items_list_version ON feed_list_items (list_id, version);
 """
 
 CREATE_FEED_LIST_ITEMS_NET_INDEX = """
@@ -129,24 +162,9 @@ UPGRADE_SEARCH_TABLES = [
 ]
 
 UPGRADE_FEED_TABLES = [
-    """
-    DO $$
-    BEGIN
-        IF EXISTS (SELECT 1 FROM information_schema.columns
-                   WHERE table_name = 'feed_lists'
-                     AND column_name = 'item_count' AND data_type = 'integer') THEN
-            ALTER TABLE feed_lists ALTER COLUMN item_count TYPE BIGINT;
-        END IF;
-    END $$;
-    """,
     "ALTER TABLE feed_lists ADD COLUMN IF NOT EXISTS last_error TEXT",
-    "ALTER TABLE feed_lists ALTER COLUMN status SET DEFAULT 'creating'",
     "ALTER TABLE feed_list_items ADD COLUMN IF NOT EXISTS value_net INET",
     "UPDATE feed_list_items SET value_net = value::inet WHERE value_net IS NULL",
-    "ALTER TABLE feed_lists ADD COLUMN IF NOT EXISTS mirror_cursor VARCHAR(64)",
-    "ALTER TABLE feed_lists ADD COLUMN IF NOT EXISTS mirror_updated_at TIMESTAMP",
-    "ALTER TABLE feed_lists ADD COLUMN IF NOT EXISTS sync_attempts INT NOT NULL DEFAULT 0",
-    "ALTER TABLE feed_lists ADD COLUMN IF NOT EXISTS next_attempt_at TIMESTAMPTZ",
     """
     DO $$
     BEGIN
@@ -154,6 +172,67 @@ UPGRADE_FEED_TABLES = [
                    WHERE table_name = 'feed_list_items'
                      AND column_name = 'value_net' AND is_nullable = 'YES') THEN
             ALTER TABLE feed_list_items ALTER COLUMN value_net SET NOT NULL;
+        END IF;
+    END $$;
+    """,
+]
+
+UPGRADE_FEED_VERSIONS = [
+    """
+    DO $$
+    BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name = 'feed_lists' AND column_name = 'version') THEN
+
+            ALTER TABLE feed_lists ADD COLUMN IF NOT EXISTS current_version INT;
+            ALTER TABLE feed_lists ADD COLUMN IF NOT EXISTS last_error TEXT;
+            ALTER TABLE feed_lists ADD COLUMN IF NOT EXISTS mirror_cursor VARCHAR(64);
+            ALTER TABLE feed_lists ADD COLUMN IF NOT EXISTS mirror_updated_at TIMESTAMP;
+            ALTER TABLE feed_lists ADD COLUMN IF NOT EXISTS sync_attempts INT NOT NULL DEFAULT 0;
+            ALTER TABLE feed_lists ADD COLUMN IF NOT EXISTS next_attempt_at TIMESTAMPTZ;
+
+            INSERT INTO feed_list_versions
+                (list_id, version, status, item_count, source_filters, build_kind,
+                 created_by, created_at, published_at,
+                 mirror_cursor, mirror_updated_at, sync_attempts, next_attempt_at)
+            SELECT l.id, l.version,
+                   CASE WHEN l.status IN ('active', 'archived') THEN 'ready' ELSE 'pending_sync' END,
+                   l.item_count,
+                   jsonb_set(l.source_filters, '{source}', to_jsonb(l.source_type)),
+                   'create',
+                   l.created_by, l.created_at,
+                   CASE WHEN l.status IN ('active', 'archived') THEN l.updated_at END,
+                   l.mirror_cursor, l.mirror_updated_at,
+                   CASE WHEN l.status = 'sync_failed' THEN 0 ELSE l.sync_attempts END,
+                   CASE WHEN l.status = 'sync_failed' THEN now() ELSE l.next_attempt_at END
+            FROM feed_lists l
+            WHERE l.status IN ('active', 'archived', 'pending_sync', 'sync_failed')
+              AND NOT EXISTS (SELECT 1 FROM feed_list_versions v WHERE v.list_id = l.id);
+
+            UPDATE feed_lists SET current_version = version
+            WHERE status IN ('active', 'archived');
+
+            DELETE FROM feed_list_items i USING feed_lists l
+            WHERE i.list_id = l.id AND l.status IN ('creating', 'failed');
+
+            UPDATE feed_lists SET last_error = 'Сборка прервана обновлением сервиса'
+            WHERE status = 'creating' AND last_error IS NULL;
+
+            UPDATE feed_lists SET status = 'active'
+            WHERE status IN ('creating', 'pending_sync', 'failed', 'sync_failed');
+
+            DROP INDEX IF EXISTS idx_feed_lists_pending_sync;
+
+            ALTER TABLE feed_lists
+                DROP COLUMN version,
+                DROP COLUMN item_count,
+                DROP COLUMN source_filters,
+                DROP COLUMN mirror_cursor,
+                DROP COLUMN mirror_updated_at,
+                DROP COLUMN sync_attempts,
+                DROP COLUMN next_attempt_at;
+
+            ALTER TABLE feed_lists ALTER COLUMN status SET DEFAULT 'active';
         END IF;
     END $$;
     """,
@@ -233,13 +312,18 @@ class DatabaseManager:
             await conn.execute(CREATE_PROFILE_STATES_INDEX)
             await conn.execute(CREATE_FEED_LISTS_TABLE)
             await conn.execute(CREATE_FEED_LIST_ITEMS_TABLE)
+            await conn.execute(CREATE_FEED_LIST_VERSIONS_TABLE)
             for statement in UPGRADE_FEED_TABLES:
                 await conn.execute(statement)
+            for statement in UPGRADE_FEED_VERSIONS:
+                await conn.execute(statement)
+            await conn.execute(CREATE_FLV_ONE_BUILD_INDEX)
+            await conn.execute(CREATE_FLV_NEXT_ATTEMPT_INDEX)
+            await conn.execute(CREATE_FLV_PURGE_INDEX)
             await conn.execute(CREATE_FEED_LIST_ITEMS_INDEX)
             await conn.execute(CREATE_FEED_LIST_ITEMS_NET_INDEX)
             await conn.execute(CREATE_SEARCH_SESSIONS_TABLE)
             await conn.execute(CREATE_SEARCH_SESSION_ROWS_TABLE)
-            await conn.execute(CREATE_FEED_LISTS_SYNC_INDEX)
             for statement in UPGRADE_SEARCH_TABLES:
                 await conn.execute(statement)
 
