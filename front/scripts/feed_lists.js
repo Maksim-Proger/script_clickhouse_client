@@ -29,11 +29,24 @@ const itemsPagination = document.getElementById("feedItemsPagination");
 
 const createManualDialog = document.getElementById("createManualDialog");
 
+const appendDialog = document.getElementById("appendDialog");
+const appendTitle = document.getElementById("appendTitle");
+const btnConfirmAppend = document.getElementById("btnConfirmAppend");
+
 let currentPage = 1;
 let currentItemsListId = null;
+let appendListId = null;
 let searchDebounce = null;
 let refreshTimer = null;
 const listsById = new Map();
+const versionsByList = new Map();
+const expandedIds = new Set();
+
+const BUILD_KIND_LABELS = {
+    create: "создание",
+    append: "дополнение",
+    restore: "восстановление",
+};
 
 const SOURCE_LABELS = {
     reputation: "Репутация",
@@ -66,9 +79,10 @@ async function loadLists(page = 1) {
 
         renderTable(lists);
         renderPagination(result.page || 1, result.total_pages || 1);
+        refreshExpanded();
 
         clearTimeout(refreshTimer);
-        if (lists.some(l => l.status === "creating" || l.status === "pending_sync")) {
+        if (lists.some(l => l.pending)) {
             refreshTimer = setTimeout(() => loadLists(currentPage), 4000);
         }
     } catch (e) {
@@ -81,12 +95,20 @@ function renderTable(lists) {
     listsById.clear();
     lists.forEach(l => listsById.set(l.id, l));
 
+    expandedIds.forEach(id => {
+        if (!listsById.has(id)) expandedIds.delete(id);
+    });
+    [...versionsByList.keys()].forEach(id => {
+        if (!listsById.has(id)) versionsByList.delete(id);
+    });
+
     if (!lists.length) {
         container.innerHTML = "<p style='padding:20px'>Списков пока нет</p>";
         return;
     }
 
     let html = `<table><thead><tr>
+        <th></th>
         <th>ID</th>
         <th>Название</th>
         <th>Описание</th>
@@ -100,62 +122,167 @@ function renderTable(lists) {
     </tr></thead><tbody>`;
 
     lists.forEach(l => {
-        let badge;
-        if (l.status === "creating") {
-            badge = `<span class="badge badge--creating">Создаётся</span>`;
-        } else if (l.status === "pending_sync") {
-            badge = `<span class="badge badge--creating">Синхронизация</span>`;
-        } else if (l.status === "failed") {
-            badge = `<span class="badge badge--failed" title="${escapeHtml(l.last_error)}">Ошибка</span>`;
-        } else if (l.status === "sync_failed") {
-            badge = `<span class="badge badge--failed" title="${escapeHtml(l.last_error)}">Не синхронизирован</span>`;
-                } else if (l.status === "active") {
-            badge = `<span class="badge badge--active">Активен</span>`;
-        } else {
-            badge = `<span class="badge badge--inactive">Архив</span>`;
-        }
-
-        let actions;
-        if (l.status === "creating" || l.status === "pending_sync") {
-            actions = "";
-        } else if (l.status === "failed") {
-            actions = `<button class="btn btn--danger btn--small" onclick="window.deleteList(${l.id})">Удалить</button>`;
-        } else if (l.status === "sync_failed") {
-            actions = `
-                <button class="btn btn--secondary btn--small" onclick="window.retrySync(${l.id})">Повторить</button>
-                <button class="btn btn--danger btn--small" onclick="window.deleteList(${l.id})">Удалить</button>`;
-        } else {
-            const toggleAction = l.status === "active"
-                ? `<button class="btn btn--secondary btn--small" onclick="window.setListStatus(${l.id}, 'archived')">Архив</button>`
-                : `<button class="btn btn--secondary btn--small" onclick="window.setListStatus(${l.id}, 'active')">Вернуть</button>`;
-            const exportActions = l.status === "active"
-                ? `<button class="btn btn--secondary btn--small" onclick="window.exportList(${l.id}, 'txt')">TXT</button>
-                <button class="btn btn--secondary btn--small" onclick="window.exportList(${l.id}, 'json')">JSON</button>`
-                : "";
-            actions = `
-                <button class="btn btn--secondary btn--small" onclick="window.openListItems(${l.id})">Элементы</button>
-                ${exportActions}
-                ${toggleAction}
-                <button class="btn btn--danger btn--small" onclick="window.deleteList(${l.id})">Удалить</button>`;
-        }
+        const toggle = l.has_history
+            ? `<button class="btn btn--secondary btn--small" onclick="window.toggleHistory(${l.id})">${expandedIds.has(l.id) ? "▴" : "▾"}</button>`
+            : "";
 
         html += `<tr>
+            <td>${toggle}</td>
             <td>${l.id}</td>
             <td>${escapeHtml(l.name)}</td>
             <td title="${escapeHtml(l.description)}">${escapeHtml(truncate(l.description, 60))}</td>
             <td>${SOURCE_LABELS[l.source_type] || escapeHtml(l.source_type)}</td>
-            <td>${badge}</td>
+            <td>${renderBadge(l)}</td>
             <td>${l.item_count}</td>
-            <td>v${l.version}</td>
+            <td>${l.current_version ? "v" + l.current_version : "-"}</td>
             <td>${formatDate(l.updated_at)}</td>
             <td>${escapeHtml(l.created_by)}</td>
-            <td><div class="feed-actions">${actions}</div></td>
+            <td><div class="feed-actions">${renderActions(l)}</div></td>
         </tr>`;
+
+        if (expandedIds.has(l.id)) {
+            html += `<tr class="feed-history-row"><td colspan="11" id="feed-history-${l.id}">Загрузка...</td></tr>`;
+        }
     });
 
     html += "</tbody></table>";
     container.innerHTML = html;
 }
+
+function renderBadge(l) {
+    if (l.pending) {
+        return `<span class="badge badge--creating">Обновляется</span>`;
+    }
+    if (l.status === "creating") {
+        return `<span class="badge badge--creating">Создаётся</span>`;
+    }
+    if (l.status === "pending_sync") {
+        return `<span class="badge badge--creating">Синхронизация</span>`;
+    }
+    if (l.status === "failed") {
+        return `<span class="badge badge--failed" title="${escapeHtml(l.last_error)}">Ошибка</span>`;
+    }
+    if (l.status === "sync_failed") {
+        return `<span class="badge badge--failed" title="${escapeHtml(l.last_error)}">Не синхронизирован</span>`;
+    }
+    if (l.status === "active") {
+        return `<span class="badge badge--active">Активен</span>`;
+    }
+    return `<span class="badge badge--inactive">Архив</span>`;
+}
+
+function renderActions(l) {
+    if (!l.current_version) {
+        return "";
+    }
+
+    const lock = l.busy ? "disabled" : "";
+
+    if (l.status === "failed") {
+        return `<button class="btn btn--danger btn--small" onclick="window.deleteList(${l.id})" ${lock}>Удалить</button>`;
+    }
+
+    if (l.status === "sync_failed") {
+        return `
+            <button class="btn btn--secondary btn--small" onclick="window.retrySync(${l.id})" ${lock}>Повторить</button>
+            <button class="btn btn--danger btn--small" onclick="window.deleteList(${l.id})" ${lock}>Удалить</button>`;
+    }
+
+    const toggleAction = l.status === "active"
+        ? `<button class="btn btn--secondary btn--small" onclick="window.setListStatus(${l.id}, 'archived')">Архив</button>`
+        : `<button class="btn btn--secondary btn--small" onclick="window.setListStatus(${l.id}, 'active')">Вернуть</button>`;
+
+    const exportActions = l.status === "active"
+        ? `<button class="btn btn--secondary btn--small" onclick="window.exportList(${l.id}, 'txt')">TXT</button>
+            <button class="btn btn--secondary btn--small" onclick="window.exportList(${l.id}, 'json')">JSON</button>`
+        : "";
+
+    const changeAction = l.status === "active"
+        ? `<button class="btn btn--secondary btn--small" onclick="window.openAppendDialog(${l.id})" ${lock}>Изменить</button>`
+        : "";
+
+    return `
+        <button class="btn btn--secondary btn--small" onclick="window.openListItems(${l.id})">Элементы</button>
+        ${exportActions}
+        ${changeAction}
+        ${toggleAction}
+        <button class="btn btn--danger btn--small" onclick="window.deleteList(${l.id})" ${lock}>Удалить</button>`;
+}
+
+function renderHistory(listId) {
+    const cell = document.getElementById(`feed-history-${listId}`);
+    if (!cell) return;
+
+    const list = listsById.get(listId);
+    const cached = versionsByList.get(listId);
+
+    if (!cached) {
+        cell.textContent = "Загрузка...";
+        return;
+    }
+    if (!cached.data.length) {
+        cell.textContent = "Прошлых версий нет";
+        return;
+    }
+
+    const lock = list?.busy ? "disabled" : "";
+    const rows = cached.data.map(v => `<tr>
+        <td>v${v.version}</td>
+        <td>${formatDate(v.created_at)}</td>
+        <td>${v.item_count}</td>
+        <td>${escapeHtml(v.created_by)}</td>
+        <td>${BUILD_KIND_LABELS[v.build_kind] || escapeHtml(v.build_kind)}</td>
+        <td><button class="btn btn--secondary btn--small" onclick="window.restoreVersion(${listId}, ${v.version})" ${lock}>Восстановить</button></td>
+    </tr>`).join("");
+
+    cell.innerHTML = `<div class="feed-history"><table><thead><tr>
+        <th>Версия</th><th>Создана</th><th>Элементов</th><th>Создал</th><th>Тип</th><th></th>
+    </tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+async function loadVersions(listId) {
+    try {
+        const response = await Auth.authFetch(`${Auth.API_BASE}/api/feed-lists/${listId}/versions`);
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.detail || `HTTP ${response.status}`);
+        }
+        const result = await response.json();
+        versionsByList.set(listId, {
+            forVersion: result.current_version,
+            data: result.data || [],
+        });
+        renderHistory(listId);
+    } catch (e) {
+        if (e.message === "Unauthorized") return;
+        const cell = document.getElementById(`feed-history-${listId}`);
+        if (cell) cell.innerHTML = `<span style="color:var(--color-danger)">Ошибка: ${escapeHtml(e.message)}</span>`;
+    }
+}
+
+function refreshExpanded() {
+    expandedIds.forEach(listId => {
+        const list = listsById.get(listId);
+        const cached = versionsByList.get(listId);
+        if (cached && list && cached.forVersion === list.current_version) {
+            renderHistory(listId);
+        } else {
+            versionsByList.delete(listId);
+            renderHistory(listId);
+            loadVersions(listId);
+        }
+    });
+}
+
+window.toggleHistory = (listId) => {
+    if (expandedIds.has(listId)) {
+        expandedIds.delete(listId);
+    } else {
+        expandedIds.add(listId);
+    }
+    renderTable([...listsById.values()]);
+    refreshExpanded();
+};
 
 function truncate(s, max) {
     const str = String(s ?? "");
@@ -340,6 +467,198 @@ window.retrySync = async (listId) => {
     }
 };
 
+window.restoreVersion = async (listId, version) => {
+    const list = listsById.get(listId);
+    const cached = versionsByList.get(listId);
+    if (!list || !cached) return;
+
+    const dropped = cached.data
+        .filter(v => v.version > version)
+        .map(v => v.version)
+        .sort((a, b) => a - b);
+    const target = cached.data.find(v => v.version === version);
+    if (!target) {
+        alert("Список версий устарел, обновляю");
+        versionsByList.delete(listId);
+        refreshExpanded();
+        return;
+    }
+
+    const droppedText = dropped.length === 1
+        ? `версия ${dropped[0]} будет удалена безвозвратно`
+        : `версии ${dropped.join(", ")} будут удалены безвозвратно`;
+
+    const text = `Версия ${version} станет актуальной, в ней ${target.item_count} адресов вместо текущих ${list.item_count}.`
+        + (dropped.length ? ` Кроме того, ${droppedText}.` : "")
+        + `\n\nВосстановить?`;
+
+    if (!confirm(text)) return;
+
+    try {
+        const response = await Auth.authFetch(
+            `${Auth.API_BASE}/api/feed-lists/${listId}/versions/${version}/restore`,
+            { method: "POST" }
+        );
+        const result = await response.json().catch(() => ({}));
+
+        if (response.status === 409) {
+            alert(result.detail || "Над списком уже идёт операция");
+            await loadLists(currentPage);
+            return;
+        }
+        if (!response.ok) {
+            throw new Error(result.detail || `HTTP ${response.status}`);
+        }
+
+        listsById.set(listId, result);
+        versionsByList.delete(listId);
+        renderTable([...listsById.values()]);
+        refreshExpanded();
+    } catch (e) {
+        if (e.message !== "Unauthorized") alert(`Ошибка восстановления: ${e.message}`);
+    }
+};
+
+const APPEND_SOURCES = ["manual", "blocked_ips", "reputation"];
+
+function appendFilterValue(id) {
+    return document.getElementById(id).value.trim();
+}
+
+function fillAppendForm(source, filters) {
+    const known = APPEND_SOURCES.includes(source) ? source : "manual";
+
+    APPEND_SOURCES.forEach(name => {
+        document.getElementById(`appendBlock_${name}`).classList.toggle("is-hidden", name !== known);
+    });
+    document.querySelector(`input[name="appendSource"][value="${known}"]`).checked = true;
+
+    const f = filters || {};
+    document.getElementById("appendManualValues").value = "";
+
+    document.getElementById("appendChDateFrom").value = (f.period?.from || "").split(" ")[0] || "";
+    document.getElementById("appendChDateTo").value = (f.period?.to || "").split(" ")[0] || "";
+    document.getElementById("appendChIp").value = f.ip || "";
+    document.getElementById("appendChSource").value = f.source || "";
+    document.getElementById("appendChProfile").value = f.profile || "";
+
+    document.getElementById("appendRepScoreFrom").value = f.score_from ?? "";
+    document.getElementById("appendRepScoreTo").value = f.score_to ?? "";
+    document.getElementById("appendRepIp").value = f.ip || "";
+    document.getElementById("appendRepAsn").value = f.asn || "";
+    document.getElementById("appendRepCountries").value = f.countries || "";
+}
+
+function collectAppendPayload() {
+    const source = document.querySelector('input[name="appendSource"]:checked').value;
+
+    const payload = {
+        source,
+        values: null,
+        blocked_ips_filters: null,
+        reputation_filters: null,
+    };
+
+    if (source === "manual") {
+        const values = document.getElementById("appendManualValues").value
+            .split("\n").map(v => v.trim()).filter(Boolean);
+        if (!values.length) throw new Error("Добавьте хотя бы одно значение");
+        payload.values = values;
+        return payload;
+    }
+
+    if (source === "blocked_ips") {
+        const filters = {};
+        const from = appendFilterValue("appendChDateFrom");
+        const to = appendFilterValue("appendChDateTo");
+        if (from || to) {
+            filters.period = {};
+            if (from) filters.period.from = `${from} 00:00:00`;
+            if (to) filters.period.to = `${to} 23:59:59`;
+        }
+        if (appendFilterValue("appendChIp")) filters.ip = appendFilterValue("appendChIp");
+        if (appendFilterValue("appendChSource")) filters.source = appendFilterValue("appendChSource");
+        if (appendFilterValue("appendChProfile")) filters.profile = appendFilterValue("appendChProfile");
+        payload.blocked_ips_filters = filters;
+        return payload;
+    }
+
+    const filters = {};
+    const scoreFrom = appendFilterValue("appendRepScoreFrom");
+    const scoreTo = appendFilterValue("appendRepScoreTo");
+    if (scoreFrom) filters.score_from = Number(scoreFrom);
+    if (scoreTo) filters.score_to = Number(scoreTo);
+    if (appendFilterValue("appendRepIp")) filters.ip = appendFilterValue("appendRepIp");
+    if (appendFilterValue("appendRepAsn")) filters.asn = appendFilterValue("appendRepAsn");
+    if (appendFilterValue("appendRepCountries")) filters.countries = appendFilterValue("appendRepCountries");
+    payload.reputation_filters = filters;
+    return payload;
+}
+
+window.openAppendDialog = async (listId) => {
+    appendListId = listId;
+    appendTitle.textContent = `Изменение списка "${listsById.get(listId)?.name ?? "#" + listId}"`;
+    fillAppendForm("manual", null);
+    appendDialog.showModal();
+
+    try {
+        const response = await Auth.authFetch(`${Auth.API_BASE}/api/feed-lists/${listId}`);
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.detail || `HTTP ${response.status}`);
+        }
+        const card = await response.json();
+        const applied = card.source_filters;
+        if (applied && applied.source) {
+            fillAppendForm(applied.source, applied.filters);
+        }
+    } catch (e) {
+        if (e.message !== "Unauthorized") alert(`Не удалось загрузить фильтры списка: ${e.message}`);
+    }
+};
+
+async function submitAppend() {
+    let payload;
+    try {
+        payload = collectAppendPayload();
+    } catch (e) {
+        return alert(e.message);
+    }
+
+    btnConfirmAppend.disabled = true;
+    btnConfirmAppend.textContent = "Добавление...";
+
+    try {
+        const response = await Auth.authFetch(`${Auth.API_BASE}/api/feed-lists/${appendListId}/append`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+        const result = await response.json().catch(() => ({}));
+
+        if (response.status === 409) {
+            alert(result.detail || "Над списком уже идёт операция");
+            return;
+        }
+        if (!response.ok) {
+            throw new Error(result.detail || `HTTP ${response.status}`);
+        }
+
+        listsById.set(appendListId, result);
+        appendDialog.close();
+        renderTable([...listsById.values()]);
+        refreshExpanded();
+
+        clearTimeout(refreshTimer);
+        refreshTimer = setTimeout(() => loadLists(currentPage), 4000);
+    } catch (e) {
+        if (e.message !== "Unauthorized") alert(`Ошибка: ${e.message}`);
+    } finally {
+        btnConfirmAppend.disabled = false;
+        btnConfirmAppend.textContent = "Добавить";
+    }
+}
+
 document.getElementById("btnCreateManual").addEventListener("click", () => {
     document.getElementById("manualListName").value = "";
     document.getElementById("manualListDescription").value = "";
@@ -377,6 +696,16 @@ document.getElementById("btnConfirmCreateManual").addEventListener("click", asyn
         btn.textContent = "Создать";
     }
 });
+
+document.querySelectorAll('input[name="appendSource"]').forEach(radio => {
+    radio.addEventListener("change", () => {
+        APPEND_SOURCES.forEach(name => {
+            document.getElementById(`appendBlock_${name}`).classList.toggle("is-hidden", name !== radio.value);
+        });
+    });
+});
+
+btnConfirmAppend.addEventListener("click", submitAppend);
 
 searchInput.addEventListener("input", () => {
     clearTimeout(searchDebounce);
