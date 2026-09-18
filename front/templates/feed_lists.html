@@ -93,6 +93,7 @@
             <span>Название</span>
             <input type="text" id="manualListName" placeholder="например whitelist-partners">
         </label>
+        <p class="dialog-meta">Нельзя использовать символы / ? # %</p>
 
         <label class="login-field">
             <span>Описание</span>
@@ -139,6 +140,10 @@
         </div>
 
         <div id="appendBlock_blocked_ips" class="is-hidden">
+            <label class="login-field">
+                <span>Дата</span>
+                <input type="date" id="appendChDate">
+            </label>
             <label class="login-field">
                 <span>Период с</span>
                 <input type="date" id="appendChDateFrom">
@@ -193,6 +198,15 @@
                 <input type="checkbox" id="appendRepCountryExclude">
                 <span>Исключить указанные страны</span>
             </label>
+        </div>
+
+        <div id="appendExcludeBlock" class="is-hidden">
+            <hr class="menu-divider">
+            <label class="login-field">
+                <span>Исключить IP из фид-листов</span>
+            </label>
+            <p id="appendExcludeNote" class="dialog-meta is-hidden"></p>
+            <div id="appendExcludeLists" class="exclude-lists">Загрузка...</div>
         </div>
 
         <div class="dialog-actions" style="margin-top: 15px;">
