@@ -1,3 +1,5 @@
+import asyncio
+import csv
 import gzip
 import io
 
@@ -5,16 +7,31 @@ _ARCHIVE_COLUMNS = (
     "value", "value_type", "score", "risk_level",
     "asn", "country", "source", "first_seen", "last_seen",
 )
+_DUMP_CHUNK = 50_000
+
+
+def _write_rows(gz, rows) -> None:
+    text = io.StringIO()
+    csv.writer(text, lineterminator="\n").writerows(rows)
+    gz.write(text.getvalue().encode("utf-8"))
 
 
 async def dump_version(conn, list_id: int, version: int) -> bytes:
-    buf = io.BytesIO()
-    await conn.copy_from_query(
-        f"SELECT {', '.join(_ARCHIVE_COLUMNS)} FROM feed_list_items "
-        f"WHERE list_id = $1 AND version = $2 ORDER BY value",
-        list_id, version, output=buf, format="csv",
-    )
-    return gzip.compress(buf.getvalue())
+    raw = io.BytesIO()
+    last_value = ""
+    with gzip.GzipFile(fileobj=raw, mode="wb") as gz:
+        while True:
+            rows = await conn.fetch(
+                f"SELECT {', '.join(_ARCHIVE_COLUMNS)} FROM feed_list_items "
+                f"WHERE list_id = $1 AND version = $2 AND value > $3 "
+                f"ORDER BY value LIMIT $4",
+                list_id, version, last_value, _DUMP_CHUNK,
+            )
+            if not rows:
+                break
+            await asyncio.to_thread(_write_rows, gz, rows)
+            last_value = rows[-1]["value"]
+    return raw.getvalue()
 
 
 async def load_version(conn, list_id: int, version: int, blob: bytes) -> None:
