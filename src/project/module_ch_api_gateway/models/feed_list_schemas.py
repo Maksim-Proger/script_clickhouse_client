@@ -5,7 +5,7 @@ from project.module_ch_api_gateway.models.filters import CHReadFilters, Reputati
 
 
 class FeedListCreateRequest(BaseModel):
-    name: str = Field(..., min_length=1, max_length=200)
+    name: str = Field(..., min_length=1, max_length=200, pattern=r"^[^/?#%\r\n\t]+$")
     description: str = Field("", max_length=2000)
     source_type: Literal["reputation", "blocked_ips", "manual"]
     reputation_filters: Optional[ReputationFilters] = None

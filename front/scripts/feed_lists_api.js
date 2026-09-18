@@ -1,6 +1,13 @@
 import * as Auth from './auth.js';
 
 const EXCLUDE_PAGE_SIZE = 50;
+
+export const NAME_CHARS_ERROR = "В названии нельзя использовать символы / ? # %";
+
+export function hasForbiddenNameChars(name) {
+    return /[/?#%\r\n\t]/.test(name);
+}
+
 const selections = new WeakMap();
 
 export function escapeHtml(value) {

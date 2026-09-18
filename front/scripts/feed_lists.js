@@ -1,6 +1,14 @@
 import * as Auth from './auth.js';
 import { requireAuthOrRedirect, initProfilePanel } from './app_shell.js';
-import { fetchFeedLists, createFeedList, escapeHtml } from './feed_lists_api.js';
+import {
+    fetchFeedLists,
+    createFeedList,
+    escapeHtml,
+    renderExcludeOptions,
+    getCheckedExcludeIds,
+    hasForbiddenNameChars,
+    NAME_CHARS_ERROR,
+} from './feed_lists_api.js';
 
 const LOGIN_PAGE = '/templates/new_index.html';
 const PAGE_SIZE = 50;
@@ -103,7 +111,7 @@ function renderTable(lists) {
     lists.forEach(l => listsById.set(l.id, l));
 
     expandedIds.forEach(id => {
-        if (!listsById.has(id)) expandedIds.delete(id);
+        if (!listsById.get(id)?.has_history) expandedIds.delete(id);
     });
     [...versionsByList.keys()].forEach(id => {
         if (!listsById.has(id)) versionsByList.delete(id);
@@ -184,7 +192,8 @@ function renderActions(l) {
 
     const exportActions = l.status === "active"
         ? `<button class="btn btn--secondary btn--small" onclick="window.exportList(${l.id}, 'txt')">TXT</button>
-            <button class="btn btn--secondary btn--small" onclick="window.exportList(${l.id}, 'json')">JSON</button>`
+            <button class="btn btn--secondary btn--small" onclick="window.exportList(${l.id}, 'json')">JSON</button>
+            <button class="btn btn--secondary btn--small" onclick="window.copyRemoteUrl(${l.id})" title="Скопировать адрес раздачи">Адрес раздачи</button>`
         : "";
 
     const changeAction = l.status === "active"
@@ -442,6 +451,29 @@ window.deleteList = async (listId) => {
     }
 };
 
+window.copyRemoteUrl = (listId) => {
+    const list = listsById.get(listId);
+    if (!list) return;
+
+    if (hasForbiddenNameChars(list.name)) {
+        return alert(`${NAME_CHARS_ERROR}. Переименовать список нельзя, создайте новый с корректным названием`);
+    }
+
+    const url = `${Auth.API_BASE}/remote/${encodeURIComponent(list.name)}`;
+    const field = document.createElement("textarea");
+    field.value = url;
+    document.body.appendChild(field);
+    field.select();
+    const copied = document.execCommand("copy");
+    field.remove();
+
+    if (copied) {
+        alert(`Адрес скопирован: ${url}`);
+    } else {
+        prompt("Скопируйте адрес раздачи", url);
+    }
+};
+
 window.restoreVersion = async (listId, version) => {
     const list = listsById.get(listId);
     const cached = versionsByList.get(listId);
@@ -504,17 +536,23 @@ function appendFilterValue(id) {
     return document.getElementById(id).value.trim();
 }
 
+function showAppendSource(source) {
+    APPEND_SOURCES.forEach(name => {
+        document.getElementById(`appendBlock_${name}`).classList.toggle("is-hidden", name !== source);
+    });
+    document.getElementById("appendExcludeBlock").classList.toggle("is-hidden", source === "manual");
+}
+
 function fillAppendForm(source, filters) {
     const known = APPEND_SOURCES.includes(source) ? source : "manual";
 
-    APPEND_SOURCES.forEach(name => {
-        document.getElementById(`appendBlock_${name}`).classList.toggle("is-hidden", name !== known);
-    });
+    showAppendSource(known);
     document.querySelector(`input[name="appendSource"][value="${known}"]`).checked = true;
 
     const f = filters || {};
     document.getElementById("appendManualValues").value = "";
 
+    document.getElementById("appendChDate").value = (f.blocked_at || "").split(" ")[0];
     document.getElementById("appendChDateFrom").value = (f.period?.from ?? f.period?.from_date ?? "").split(" ")[0];
     document.getElementById("appendChDateTo").value = (f.period?.to ?? f.period?.to_date ?? "").split(" ")[0];
     document.getElementById("appendChIp").value = f.ip || "";
@@ -548,8 +586,13 @@ function collectAppendPayload() {
         return payload;
     }
 
+    const excludeIds = getCheckedExcludeIds(document.getElementById("appendExcludeLists"));
+
     if (source === "blocked_ips") {
         const filters = {};
+        const exact = appendFilterValue("appendChDate");
+        if (exact) filters.blocked_at = exact;
+
         const from = appendFilterValue("appendChDateFrom");
         const to = appendFilterValue("appendChDateTo");
         if (from || to) {
@@ -560,6 +603,7 @@ function collectAppendPayload() {
         if (appendFilterValue("appendChIp")) filters.ip = appendFilterValue("appendChIp");
         if (appendFilterValue("appendChSource")) filters.source = appendFilterValue("appendChSource");
         if (appendFilterValue("appendChProfile")) filters.profile = appendFilterValue("appendChProfile");
+        if (excludeIds.length) filters.exclude_list_ids = excludeIds;
         payload.blocked_ips_filters = filters;
         return payload;
     }
@@ -585,14 +629,31 @@ function collectAppendPayload() {
         filters.country_exclude = document.getElementById("appendRepCountryExclude").checked;
     }
 
+    if (excludeIds.length) filters.exclude_list_ids = excludeIds;
     payload.reputation_filters = filters;
     return payload;
+}
+
+async function activeExcludeIds(ids) {
+    const checks = await Promise.all(ids.map(async id => {
+        const response = await Auth.authFetch(`${Auth.API_BASE}/api/feed-lists/${id}`);
+        if (response.status === 404) return null;
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const card = await response.json();
+        return card.status === "active" && card.current_version ? id : null;
+    }));
+    return checks.filter(id => id !== null);
 }
 
 window.openAppendDialog = async (listId) => {
     appendListId = listId;
     appendTitle.textContent = `Изменение списка "${listsById.get(listId)?.name ?? "#" + listId}"`;
     fillAppendForm("manual", null);
+
+    const excludeNote = document.getElementById("appendExcludeNote");
+    const excludeContainer = document.getElementById("appendExcludeLists");
+    excludeNote.classList.add("is-hidden");
+    renderExcludeOptions(excludeContainer, []).catch(() => {});
     appendDialog.showModal();
 
     try {
@@ -603,8 +664,18 @@ window.openAppendDialog = async (listId) => {
         }
         const card = await response.json();
         const applied = card.source_filters;
-        if (applied && applied.source) {
-            fillAppendForm(applied.source, applied.filters);
+        if (!applied || !applied.source || appendListId !== listId) return;
+
+        fillAppendForm(applied.source, applied.filters);
+
+        const appliedIds = applied.filters?.exclude_list_ids || [];
+        const keptIds = await activeExcludeIds(appliedIds);
+        if (appendListId !== listId) return;
+
+        renderExcludeOptions(excludeContainer, keptIds).catch(() => {});
+        if (keptIds.length < appliedIds.length) {
+            excludeNote.textContent = `Исключений убрано: ${appliedIds.length - keptIds.length}, эти списки удалены или не активны`;
+            excludeNote.classList.remove("is-hidden");
         }
     } catch (e) {
         if (e.message !== "Unauthorized") alert(`Не удалось загрузить фильтры списка: ${e.message}`);
@@ -667,6 +738,7 @@ document.getElementById("btnConfirmCreateManual").addEventListener("click", asyn
         .split("\n").map(s => s.trim()).filter(Boolean);
 
     if (!name) return alert("Введите название списка");
+    if (hasForbiddenNameChars(name)) return alert(NAME_CHARS_ERROR);
     if (!values.length) return alert("Добавьте хотя бы одно значение");
 
     const btn = document.getElementById("btnConfirmCreateManual");
@@ -692,11 +764,7 @@ document.getElementById("btnConfirmCreateManual").addEventListener("click", asyn
 });
 
 document.querySelectorAll('input[name="appendSource"]').forEach(radio => {
-    radio.addEventListener("change", () => {
-        APPEND_SOURCES.forEach(name => {
-            document.getElementById(`appendBlock_${name}`).classList.toggle("is-hidden", name !== radio.value);
-        });
-    });
+    radio.addEventListener("change", () => showAppendSource(radio.value));
 });
 
 btnConfirmAppend.addEventListener("click", submitAppend);

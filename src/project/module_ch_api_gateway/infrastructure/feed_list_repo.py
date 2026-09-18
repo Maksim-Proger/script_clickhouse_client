@@ -68,23 +68,28 @@ class FeedListRepository:
                 columns=_ITEM_COLUMNS,
             )
 
-    async def finalize_version(self, list_id: int, version: int) -> int:
+    async def count_items(self, list_id: int, version: int) -> int:
         async with self.db.pool.acquire() as conn:
             return await conn.fetchval(
+                "SELECT count(*) FROM feed_list_items WHERE list_id = $1 AND version = $2",
+                list_id, version,
+            )
+
+    async def finalize_version(self, list_id: int, version: int, item_count: int) -> None:
+        async with self.db.pool.acquire() as conn:
+            await conn.execute(
                 """
-                UPDATE feed_list_versions v
+                UPDATE feed_list_versions
                 SET status            = 'pending_sync',
-                    item_count        = (SELECT count(*) FROM feed_list_items i
-                                         WHERE i.list_id = v.list_id AND i.version = v.version),
+                    item_count        = $3,
                     last_error        = NULL,
                     mirror_cursor     = NULL,
                     mirror_updated_at = NULL,
                     sync_attempts     = 0,
                     next_attempt_at   = now()
-                WHERE v.list_id = $1 AND v.version = $2
-                RETURNING item_count
+                WHERE list_id = $1 AND version = $2
                 """,
-                list_id, version,
+                list_id, version, item_count,
             )
 
     async def get_versions_to_sync(self, limit: int) -> list[asyncpg.Record]:
@@ -317,6 +322,34 @@ class FeedListRepository:
         async with self.db.pool.acquire() as conn:
             return await conn.fetchrow(
                 f"{_CATALOG_SELECT} WHERE l.id = $1 AND l.status <> 'deleting'", list_id
+            )
+
+    async def iter_values(self,
+                          list_id: int,
+                          version: int,
+                          chunk_size: int = 50_000):
+        last_value = ""
+        while True:
+            async with self.db.pool.acquire() as conn:
+                rows = await conn.fetch(
+                    """
+                    SELECT value, value_type
+                    FROM feed_list_items
+                    WHERE list_id = $1 AND version = $2 AND value > $3
+                    ORDER BY value
+                    LIMIT $4
+                    """,
+                    list_id, version, last_value, chunk_size,
+                )
+            if not rows:
+                return
+            yield rows
+            last_value = rows[-1]["value"]
+
+    async def get_catalog_row_by_name(self, name: str) -> Optional[asyncpg.Record]:
+        async with self.db.pool.acquire() as conn:
+            return await conn.fetchrow(
+                f"{_CATALOG_SELECT} WHERE l.name = $1 AND l.status <> 'deleting'", name
             )
 
     async def copy_items(self, list_id: int, from_version: int, to_version: int) -> None:

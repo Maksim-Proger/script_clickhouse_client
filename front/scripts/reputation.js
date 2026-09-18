@@ -2,6 +2,8 @@ import * as Auth from './auth.js';
 import { requireAuthOrRedirect, initProfilePanel } from './app_shell.js';
 import {
     renderExcludeOptions,
+    hasForbiddenNameChars,
+    NAME_CHARS_ERROR,
     getCheckedExcludeIds,
     clearExcludeSelection,
     createFeedList,
@@ -366,6 +368,7 @@ document.getElementById("btnConfirmRepSaveList").addEventListener("click", async
     const name = document.getElementById("repListName").value.trim();
     const description = document.getElementById("repListDescription").value.trim();
     if (!name) return alert("Введите название списка");
+    if (hasForbiddenNameChars(name)) return alert(NAME_CHARS_ERROR);
 
     const btn = document.getElementById("btnConfirmRepSaveList");
     btn.disabled = true;

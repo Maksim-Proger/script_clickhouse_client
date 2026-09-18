@@ -271,6 +271,7 @@ class ClickHouseService:
             f"SELECT ip_address, min(blocked_at) as first_detected, max(blocked_at) as last_detected, "
             f"any(source) as source "
             f"FROM `feedgen`.`blocked_ips` {where_clause} "
-            f"GROUP BY ip_address"
+            f"GROUP BY ip_address "
+            f"SETTINGS prefer_column_name_to_alias = 1"
         )
         return self.stream_client.iter_rows(query, chunk_size)

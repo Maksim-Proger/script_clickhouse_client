@@ -17,6 +17,7 @@ from project.module_ch_api_gateway.services.state_service import StateService
 from project.module_ch_api_gateway.services.user_service import UserService
 from project.module_ch_api_gateway.infrastructure.geoip_client import GeoIPClient
 from project.module_ch_api_gateway.api.routers import reputation_router
+from project.module_ch_api_gateway.api.routers import remote_router
 from project.module_ch_api_gateway.infrastructure.feed_list_mirror_client import FeedListMirrorClient
 from project.module_ch_api_gateway.services.feed_list_service import (
     FeedListService,
@@ -127,5 +128,6 @@ def create_app(config: dict) -> FastAPI:
     app.include_router(simple_router.router)
     app.include_router(reputation_router.router)
     app.include_router(feed_lists_router.router)
+    app.include_router(remote_router.router)
 
     return app

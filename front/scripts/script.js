@@ -1,6 +1,12 @@
 import * as Auth from './auth.js';
 import { initProfilePanel, refreshCurrentUser } from './app_shell.js';
-import { renderExcludeOptions, getCheckedExcludeIds, createFeedList } from './feed_lists_api.js';
+import {
+    renderExcludeOptions,
+    getCheckedExcludeIds,
+    createFeedList,
+    hasForbiddenNameChars,
+    NAME_CHARS_ERROR,
+} from './feed_lists_api.js';
 
 document.addEventListener("DOMContentLoaded", () => {
 
@@ -509,6 +515,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const name = document.getElementById("chListName").value.trim();
         const description = document.getElementById("chListDescription").value.trim();
         if (!name) return alert("Введите название списка");
+        if (hasForbiddenNameChars(name)) return alert(NAME_CHARS_ERROR);
 
         const btn = document.getElementById("btnConfirmSaveList");
         btn.disabled = true;

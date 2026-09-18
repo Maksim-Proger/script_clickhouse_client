@@ -399,13 +399,18 @@ class FeedListService:
             raise ListBusyError("Список сейчас обновляется, дождитесь завершения")
         return card
 
-    def _run_build(self, list_id: int, version: int, builder) -> None:
+    def _run_build(self, list_id: int, version: int, builder,
+                   base_count: int = 0, empty_error: str = "Выборка пуста") -> None:
         async def runner():
             try:
                 await builder()
-                count = await self.repo.finalize_version(list_id, version)
-                if count == 0:
-                    await self.fail_version(list_id, version, "Выборка пуста")
+                count = await self.repo.count_items(list_id, version)
+                if count <= base_count:
+                    logger.info("action=feed_list_version_skipped id=%d version=%d items=%d reason=no_new_items",
+                                list_id, version, count)
+                    await self.fail_version(list_id, version, empty_error)
+                    return
+                await self.repo.finalize_version(list_id, version, count)
             except Exception as e:
                 logger.error("action=feed_list_build_failed id=%d version=%d error=%s",
                              list_id, version, str(e))
@@ -420,6 +425,7 @@ class FeedListService:
         base = card["current_version"]
         if base is None:
             raise ValueError("У списка нет актуальной версии, изменение недоступно")
+        base_version = await self.repo.get_version(list_id, base)
 
         try:
             async with self.repo.db.pool.acquire() as conn:
@@ -436,7 +442,7 @@ class FeedListService:
             await self.repo.copy_items(list_id, base, new)
             await builder(list_id, new)
 
-        self._run_build(list_id, new, build)
+        self._run_build(list_id, new, build, base_version["item_count"], "Новых адресов нет, версия не создана")
         return self.serialize_list(await self.repo.get_catalog_row(list_id))
 
     async def restore_version(self, list_id: int, version: int) -> dict:
@@ -474,7 +480,7 @@ class FeedListService:
 
         try:
             await self.repo.insert_items(row["id"], 1, items)
-            await self.repo.finalize_version(row["id"], 1)
+            await self.repo.finalize_version(row["id"], 1, len(items))
         except Exception as e:
             await self.fail_version(row["id"], 1, str(e))
             raise

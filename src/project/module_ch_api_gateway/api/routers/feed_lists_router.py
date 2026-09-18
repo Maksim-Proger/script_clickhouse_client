@@ -36,6 +36,8 @@ logger = logging.getLogger("ch-api-gateway.feed_lists")
 
 router = APIRouter(prefix="/api/feed-lists", tags=["FeedLists"])
 
+EMPTY_APPEND_ERROR = "Выборка пуста, версия не создана"
+
 
 def _user_key(user: dict) -> str:
     return user.get("sub") or user.get("user") or "anon"
@@ -78,6 +80,16 @@ def _source_filters(source: str, filters, exclude_lists: Optional[list[dict]]) -
     if exclude_lists:
         result["exclude_lists"] = [{"id": l["id"], "version": l["version"]} for l in exclude_lists]
     return result
+
+
+def _check_sent(list_id: int, meta: dict, sent: int, format: str) -> None:
+    if sent == meta["item_count"]:
+        return
+    logger.error(
+        "action=feed_list_export status=truncated id=%d version=%s format=%s sent=%d items=%d",
+        list_id, meta["current_version"], format, sent, meta["item_count"],
+    )
+    raise RuntimeError("Выгрузка отдана не полностью")
 
 
 def _json_default(value):
@@ -224,8 +236,11 @@ async def export_feed_list(
 
     if format == "txt":
         async def stream_txt():
+            sent = 0
             async for chunk in service.repo.iter_items(list_id, meta["current_version"]):
+                sent += len(chunk)
                 yield "\n".join(r["value"] for r in chunk) + "\n"
+            _check_sent(list_id, meta, sent, "txt")
 
         return StreamingResponse(
             stream_txt(),
@@ -239,10 +254,13 @@ async def export_feed_list(
     async def stream_json():
         yield '{"list": ' + json.dumps(meta, ensure_ascii=False, default=_json_default) + ', "items": ['
         first = True
+        sent = 0
         async for chunk in service.repo.iter_items(list_id, meta["current_version"]):
+            sent += len(chunk)
             text = ",".join(json.dumps(dict(r), ensure_ascii=False, default=_json_default) for r in chunk)
             yield text if first else "," + text
             first = False
+        _check_sent(list_id, meta, sent, "json")
         yield "]}"
 
     return StreamingResponse(stream_json(), media_type="application/json")
@@ -334,6 +352,8 @@ async def append_feed_list(
             if not body.values:
                 raise ValueError("Нужно передать значения (values)")
             items = await asyncio.to_thread(build_items_from_values, body.values)
+            if not items:
+                raise ValueError(EMPTY_APPEND_ERROR)
             check_source_size(meta["item_count"] + len(items))
             source_filters = {"source": "manual", "values_count": len(items)}
 
@@ -344,7 +364,10 @@ async def append_feed_list(
             filters = body.reputation_filters or ReputationFilters()
             filters.only_ip = False
             exclude_lists = await resolve_exclusions(request, filters.exclude_list_ids)
-            check_source_size(meta["item_count"] + await reputation_service.count_snapshot(filters))
+            total = await reputation_service.count_snapshot(filters)
+            if total == 0:
+                raise ValueError(EMPTY_APPEND_ERROR)
+            check_source_size(meta["item_count"] + total)
             source_filters = _source_filters("reputation", filters, exclude_lists)
 
             async def build(lid, version):
@@ -357,7 +380,10 @@ async def append_feed_list(
             apply_default_period(filters, DEFAULT_PERIOD_DAYS)
             _check_period_limit(filters)
             exclude_lists = await resolve_exclusions(request, filters.exclude_list_ids)
-            check_source_size(meta["item_count"] + await ch_service.count_unique_ips(filters))
+            total = await ch_service.count_unique_ips(filters)
+            if total == 0:
+                raise ValueError(EMPTY_APPEND_ERROR)
+            check_source_size(meta["item_count"] + total)
             source_filters = _source_filters("blocked_ips", filters, exclude_lists)
 
             async def build(lid, version):

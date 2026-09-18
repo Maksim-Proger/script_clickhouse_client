@@ -16,7 +16,7 @@ from project.module_ch_api_gateway.services.feed_list_service import (
 logger = logging.getLogger("ch-api-gateway.reputation")
 
 _LATEST_SNAPSHOT_PREDICATE = """
-    (computed_at, run_id) = (
+    (computed_at, run_id) IN (
         SELECT computed_at, run_id
         FROM feedgen.ip_reputation_snapshots
         ORDER BY computed_at DESC, run_id DESC
