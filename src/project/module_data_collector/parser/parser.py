@@ -198,7 +198,10 @@ def parse_targeted_pairs(
             _skip_line(stats, row)
             continue
 
-        src_ip, dst_ip = parts[0].strip(), parts[1].strip()
+        src_ip = parts[0].strip()
+        dst_parts = parts[1].split(";")
+        dst_ip = dst_parts[0].strip()
+        sid = dst_parts[1].strip() if len(dst_parts) > 1 else ""
 
         if not IP_REGEX.fullmatch(src_ip) or not IP_REGEX.fullmatch(dst_ip):
             _skip_line(stats, row)
@@ -208,7 +211,7 @@ def parse_targeted_pairs(
             "ip_address": src_ip,
             "blocked_at": blocked_at,
             "source": source,
-            "profile": dst_ip,
+            "profile": sid,
         })
 
     stats["records"] = len(records)
