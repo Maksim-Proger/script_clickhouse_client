@@ -156,6 +156,20 @@ class ReputationService:
             env["search_id"] = search_id
         return env
 
+    async def get_calc_page(self, calc_id: int, total: int, page: int, page_size: int) -> dict:
+        query = (
+            f"SELECT {_SELECT_COLS} FROM feedgen.ip_reputation_calcs "
+            f"WHERE calc_id = {int(calc_id)} ORDER BY score DESC, ip_address "
+            f"LIMIT {page_size} OFFSET {(page - 1) * page_size}"
+        )
+        try:
+            res = await self.ch_client.fetch_json(query)
+            rows = await self._enrich(_coerce_ints(res.get("data", [])))
+        except Exception as e:
+            logger.error("action=reputation_calc_rows_failed id=%d error=%s", calc_id, str(e))
+            raise SourceUnavailableError()
+        return self._envelope(rows, total, page, page_size)
+
     async def get_reputation(self,
                              filters: ReputationFilters,
                              user: str,

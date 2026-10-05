@@ -156,6 +156,34 @@ CREATE UNLOGGED TABLE IF NOT EXISTS search_session_rows (
 );
 """
 
+CREATE_REPUTATION_CALCS_TABLE = """
+CREATE TABLE IF NOT EXISTS reputation_calcs (
+    id          SERIAL PRIMARY KEY,
+    source      VARCHAR(30)  NOT NULL,
+    profile     VARCHAR(150),
+    status      VARCHAR(20)  NOT NULL DEFAULT 'building',
+    period_from TIMESTAMP,
+    period_to   TIMESTAMP,
+    row_count   BIGINT NOT NULL DEFAULT 0,
+    last_error  TEXT,
+    created_by  VARCHAR(150) NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    finished_at TIMESTAMPTZ
+);
+"""
+
+CREATE_REPUTATION_CALCS_USER_INDEX = """
+CREATE UNIQUE INDEX IF NOT EXISTS idx_reputation_calcs_one_per_user
+    ON reputation_calcs (created_by)
+    WHERE status = 'building';
+"""
+
+CREATE_REPUTATION_CALCS_TARGET_INDEX = """
+CREATE UNIQUE INDEX IF NOT EXISTS idx_reputation_calcs_one_per_target
+    ON reputation_calcs (source, coalesce(profile, ''))
+    WHERE status = 'building';
+"""
+
 UPGRADE_SEARCH_TABLES = [
     "ALTER TABLE search_sessions SET UNLOGGED",
     "ALTER TABLE search_session_rows SET UNLOGGED",
@@ -326,6 +354,9 @@ class DatabaseManager:
             await conn.execute(CREATE_SEARCH_SESSION_ROWS_TABLE)
             for statement in UPGRADE_SEARCH_TABLES:
                 await conn.execute(statement)
+            await conn.execute(CREATE_REPUTATION_CALCS_TABLE)
+            await conn.execute(CREATE_REPUTATION_CALCS_USER_INDEX)
+            await conn.execute(CREATE_REPUTATION_CALCS_TARGET_INDEX)
 
     async def get_user_by_username(self, username: str) -> Optional[asyncpg.Record]:
         async with self.pool.acquire() as conn:

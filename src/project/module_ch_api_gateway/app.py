@@ -25,6 +25,9 @@ from project.module_ch_api_gateway.services.feed_list_service import (
     mirror_sync_loop,
 )
 from project.module_ch_api_gateway.infrastructure.clickhouse_stream_client import ClickHouseStreamClient
+from project.module_ch_api_gateway.infrastructure.reputation_calc_client import ReputationCalcClient
+from project.module_ch_api_gateway.infrastructure.reputation_calc_repo import ReputationCalcRepository
+from project.module_ch_api_gateway.services.reputation_calc_service import ReputationCalcService
 
 logger = logging.getLogger("ch-api-gateway")
 
@@ -37,6 +40,7 @@ def create_app(config: dict) -> FastAPI:
             await app.state.user_service.load_revoked_jtis()
             app.state.user_service.start_cleanup_loop()
             await app.state.feed_list_service.fail_stale_versions()
+            await app.state.reputation_calc_service.fail_stale_calcs()
 
         connected = await app.state.db.connect_safe()
         if connected:
@@ -79,6 +83,10 @@ def create_app(config: dict) -> FastAPI:
     app.state.state_service = StateService(app.state.db)
     app.state.feed_list_mirror = FeedListMirrorClient(config["clickhouse"])
     app.state.feed_list_service = FeedListService(FeedListRepository(app.state.db), app.state.feed_list_mirror)
+    app.state.reputation_calc_service = ReputationCalcService(
+        ReputationCalcRepository(app.state.db),
+        ReputationCalcClient(config["clickhouse"]),
+    )
 
     app.state.ch_client = ClickHouseClient(
         host=config["clickhouse"]["host"],
