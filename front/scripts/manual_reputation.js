@@ -7,11 +7,6 @@ const CALCS_URL = `${Auth.API_BASE}/ch/reputation/calcs`;
 const PAGE_SIZE = 50;
 const ITEMS_PAGE_SIZE = 100;
 
-const PROFILE_LABELS = {
-    dosgate: "Профиль",
-    ipban: "Адрес назначения",
-};
-
 Auth.setSessionExpiredHandler(() => window.location.replace(LOGIN_PAGE));
 requireAuthOrRedirect();
 
@@ -33,7 +28,6 @@ const itemsPagination = document.getElementById("calcItemsPagination");
 
 const createCalcDialog = document.getElementById("createCalcDialog");
 const calcProfile = document.getElementById("calcProfile");
-const calcProfileLabel = document.getElementById("calcProfileLabel");
 
 let currentPage = 1;
 let currentItemsCalcId = null;
@@ -72,7 +66,7 @@ async function loadCalcs(page = 1) {
         renderPagination(result.page || 1, result.total_pages || 1);
 
         clearTimeout(refreshTimer);
-        if (calcs.some(c => c.status === "running")) {
+        if (calcs.some(c => c.status === "building")) {
             refreshTimer = setTimeout(() => loadCalcs(currentPage), 4000);
         }
     } catch (e) {
@@ -112,7 +106,7 @@ function renderTable(calcs) {
             <td>${escapeHtml(c.source)}</td>
             <td>${escapeHtml(c.profile) || "все"}</td>
             <td>${renderBadge(c)}</td>
-            <td>${c.row_count ?? "-"}</td>
+            <td>${c.status === "ready" ? c.row_count : "-"}</td>
             <td>с ${formatDate(c.period_from)}<br>по ${formatDate(c.period_to)}</td>
             <td>${formatDate(c.created_at)}</td>
             <td>${escapeHtml(c.created_by)}</td>
@@ -125,13 +119,13 @@ function renderTable(calcs) {
 }
 
 function renderBadge(c) {
-    if (c.status === "running") {
+    if (c.status === "building") {
         return `<span class="badge badge--creating">Готовится</span>`;
     }
     if (c.status === "ready") {
         return `<span class="badge badge--active">Готов</span>`;
     }
-    return `<span class="badge badge--failed" title="${escapeHtml(c.error)}">Ошибка</span>`;
+    return `<span class="badge badge--failed" title="${escapeHtml(c.last_error)}">Ошибка</span>`;
 }
 
 function renderPagination(page, totalPages) {
@@ -286,15 +280,8 @@ async function loadItems(page) {
 
 document.getElementById("btnCreateCalc").addEventListener("click", () => {
     document.querySelector('input[name="calcSource"][value="dosgate"]').checked = true;
-    calcProfileLabel.textContent = PROFILE_LABELS.dosgate;
     calcProfile.value = "";
     createCalcDialog.showModal();
-});
-
-document.querySelectorAll('input[name="calcSource"]').forEach(radio => {
-    radio.addEventListener("change", () => {
-        calcProfileLabel.textContent = PROFILE_LABELS[radio.value];
-    });
 });
 
 document.getElementById("btnConfirmCreateCalc").addEventListener("click", async () => {
