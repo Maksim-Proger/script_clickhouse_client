@@ -35,8 +35,10 @@ class ReputationCalcService:
     async def start_calc(self, source: str, profile: Optional[str], created_by: str) -> dict:
         try:
             row = await self.repo.create_calc(source, profile, created_by)
-        except asyncpg.UniqueViolationError:
-            raise CalcBusyError("Расчёт уже идёт, дождитесь завершения")
+        except asyncpg.UniqueViolationError as e:
+            if e.constraint_name == "idx_reputation_calcs_one_per_user":
+                raise CalcBusyError("У вас уже идёт расчёт, дождитесь его завершения")
+            raise CalcBusyError("Расчёт по этому источнику и профилю уже идёт, дождитесь его завершения")
 
         logger.info(
             "action=reputation_calc_started id=%d source=%s profile=%s user=%s",
