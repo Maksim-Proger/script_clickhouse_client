@@ -40,3 +40,4 @@ class ReputationFilters(BaseModel):
     only_ip: bool = False
     search_id: Optional[str] = None
     exclude_list_ids: list[int] = []
+    calc_id: Optional[int] = Field(None, ge=1)

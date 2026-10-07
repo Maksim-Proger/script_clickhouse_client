@@ -22,6 +22,10 @@ class CalcCountError(Exception):
     pass
 
 
+class CalcDeleteError(Exception):
+    pass
+
+
 class ReputationCalcService:
     def __init__(self, repo: ReputationCalcRepository, ch: ReputationCalcClient):
         self.repo = repo
@@ -89,3 +93,12 @@ class ReputationCalcService:
         for row in await self.repo.get_building_calcs():
             logger.warning("action=reputation_calc_interrupted id=%d", row["id"])
             await self._fail(row["id"], "Расчёт прерван перезапуском сервиса")
+
+    async def delete_calc(self, calc_id: int, user: str) -> None:
+        try:
+            await self.ch.clear(calc_id)
+            await self.repo.delete_calc(calc_id)
+        except Exception as e:
+            logger.error("action=reputation_calc_delete_failed id=%d error=%s", calc_id, str(e))
+            raise CalcDeleteError("Не удалось удалить расчёт, повторите позже")
+        logger.info("action=reputation_calc_deleted id=%d user=%s", calc_id, user)

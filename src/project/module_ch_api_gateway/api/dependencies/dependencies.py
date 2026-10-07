@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import time
+from typing import Optional
 
 from fastapi import Request, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -139,6 +140,22 @@ async def resolve_exclusions(request: Request, list_ids: list[int]):
         return await feed_service.resolve_exclude_lists(list_ids)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+async def resolve_calc(request: Request, calc_id: Optional[int]) -> Optional[dict]:
+    if calc_id is None:
+        return None
+    calc_service = request.app.state.reputation_calc_service
+    if not calc_service.is_available:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="БД временно недоступна")
+    row = await calc_service.repo.get_calc(calc_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Расчёт не найден")
+    if row["status"] == "building":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Расчёт ещё выполняется")
+    if row["status"] != "ready":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Расчёт завершился ошибкой")
+    return dict(row)
 
 
 def get_state_service(request: Request) -> StateService:

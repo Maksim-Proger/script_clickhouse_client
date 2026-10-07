@@ -24,6 +24,9 @@ _LATEST_SNAPSHOT_PREDICATE = """
     )
 """.strip()
 
+_SNAPSHOT_TABLE = "feedgen.ip_reputation_snapshots"
+_CALC_TABLE = "feedgen.ip_reputation_calcs"
+
 _SELECT_COLS = (
     "ip_address, score, risk_level, events_count, max_5m_events, max_hour_events, "
     "active_5m_windows, active_hours, active_days, sources_count, first_seen, last_seen, computed_at"
@@ -42,8 +45,15 @@ def _safe_cidr(value: str) -> str:
     return f"{ipaddress.ip_address(v)}/32"
 
 
+def _table(filters: ReputationFilters) -> str:
+    return _CALC_TABLE if filters.calc_id is not None else _SNAPSHOT_TABLE
+
+
 def _build_where(filters: ReputationFilters, exclude_lists: Optional[list[dict]] = None) -> str:
-    conditions = [_LATEST_SNAPSHOT_PREDICATE]
+    if filters.calc_id is not None:
+        conditions = [f"calc_id = {int(filters.calc_id)}"]
+    else:
+        conditions = [_LATEST_SNAPSHOT_PREDICATE]
 
     if filters.score_from is not None:
         conditions.append(f"score >= {float(filters.score_from)}")
@@ -57,16 +67,16 @@ def _build_where(filters: ReputationFilters, exclude_lists: Optional[list[dict]]
     return "WHERE " + " AND ".join(conditions)
 
 
-def _build_page_query(where: str, page: int, page_size: int) -> str:
+def _build_page_query(table: str, where: str, page: int, page_size: int) -> str:
     offset = (page - 1) * page_size
     return (
-        f"SELECT {_SELECT_COLS} FROM feedgen.ip_reputation_snapshots "
+        f"SELECT {_SELECT_COLS} FROM {table} "
         f"{where} ORDER BY score DESC, ip_address LIMIT {page_size} OFFSET {offset}"
     )
 
 
-def _build_count_query(where: str) -> str:
-    return f"SELECT count() as total FROM feedgen.ip_reputation_snapshots {where}"
+def _build_count_query(table: str, where: str) -> str:
+    return f"SELECT count() as total FROM {table} {where}"
 
 
 def _coerce_ints(records: list[dict]) -> list[dict]:
@@ -122,7 +132,7 @@ class ReputationService:
                                  enrich: bool = True,
                                  exclude_lists: Optional[list[dict]] = None):
         query = (
-            f"SELECT {_SELECT_COLS} FROM feedgen.ip_reputation_snapshots "
+            f"SELECT {_SELECT_COLS} FROM {_table(filters)} "
             f"{_build_where(filters, exclude_lists)} ORDER BY score DESC, ip_address"
         )
         async for chunk in self.stream_client.iter_rows(query, chunk_size):
@@ -136,7 +146,7 @@ class ReputationService:
 
     async def count_snapshot(self, filters: ReputationFilters) -> int:
         try:
-            res = await self.ch_client.fetch_json(_build_count_query(_build_where(filters)))
+            res = await self.ch_client.fetch_json(_build_count_query(_table(filters), _build_where(filters)))
             return int(res["data"][0]["total"])
         except Exception as e:
             logger.error("action=reputation_count_failed error=%s", str(e))
@@ -157,11 +167,7 @@ class ReputationService:
         return env
 
     async def get_calc_page(self, calc_id: int, total: int, page: int, page_size: int) -> dict:
-        query = (
-            f"SELECT {_SELECT_COLS} FROM feedgen.ip_reputation_calcs "
-            f"WHERE calc_id = {int(calc_id)} ORDER BY score DESC, ip_address "
-            f"LIMIT {page_size} OFFSET {(page - 1) * page_size}"
-        )
+        query = _build_page_query(_CALC_TABLE, f"WHERE calc_id = {int(calc_id)}", page, page_size)
         try:
             res = await self.ch_client.fetch_json(query)
             rows = await self._enrich(_coerce_ints(res.get("data", [])))
@@ -195,13 +201,14 @@ class ReputationService:
                 return self._envelope(result["data"] if result else [], built["total"], page, page_size,
                                       search_id=built["search_id"])
 
+            table = _table(filters)
             where = _build_where(filters)
 
-            data_res = await self.ch_client.fetch_json(_build_page_query(where, page, page_size))
+            data_res = await self.ch_client.fetch_json(_build_page_query(table, where, page, page_size))
             page_rows = _coerce_ints(data_res.get("data", []))
 
             if page == 1:
-                count_res = await self.ch_client.fetch_json(_build_count_query(where))
+                count_res = await self.ch_client.fetch_json(_build_count_query(table, where))
                 total = int(count_res["data"][0]["total"])
             else:
                 total = None

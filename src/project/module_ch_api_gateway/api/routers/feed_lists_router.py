@@ -12,6 +12,7 @@ from project.module_ch_api_gateway.api.dependencies.dependencies import (
     get_current_user,
     get_feed_list_service,
     get_interactive_user,
+    resolve_calc,
     resolve_exclusions,
 )
 from project.module_ch_api_gateway.api.routers.reputation_router import get_reputation_service
@@ -71,7 +72,8 @@ def _check_period_limit(filters: CHReadFilters) -> None:
         )
 
 
-def _source_filters(source: str, filters, exclude_lists: Optional[list[dict]]) -> dict:
+def _source_filters(source: str, filters, exclude_lists: Optional[list[dict]],
+                    calc: Optional[dict] = None) -> dict:
     clean = filters.model_dump(exclude_none=True, by_alias=True)
     clean.pop("search_id", None)
     clean.pop("page", None)
@@ -79,6 +81,8 @@ def _source_filters(source: str, filters, exclude_lists: Optional[list[dict]]) -
     result = {"source": source, "filters": clean}
     if exclude_lists:
         result["exclude_lists"] = [{"id": l["id"], "version": l["version"]} for l in exclude_lists]
+    if calc:
+        result["calc"] = {key: calc[key] for key in ("id", "source", "profile", "period_from", "period_to")}
     return result
 
 
@@ -139,6 +143,7 @@ async def create_feed_list(
         if body.source_type == "reputation":
             filters = body.reputation_filters or ReputationFilters()
             filters.only_ip = False
+            calc = await resolve_calc(request, filters.calc_id)
             exclude_lists = await resolve_exclusions(request, filters.exclude_list_ids)
 
             if filters.search_id:
@@ -158,7 +163,7 @@ async def create_feed_list(
 
             return await service.create_background(
                 body.name, body.description, created_by, "reputation",
-                _source_filters("reputation", filters, exclude_lists), build,
+                _source_filters("reputation", filters, exclude_lists, calc), build,
             )
 
         filters = body.blocked_ips_filters or CHReadFilters()
@@ -363,12 +368,13 @@ async def append_feed_list(
         elif body.source == "reputation":
             filters = body.reputation_filters or ReputationFilters()
             filters.only_ip = False
+            calc = await resolve_calc(request, filters.calc_id)
             exclude_lists = await resolve_exclusions(request, filters.exclude_list_ids)
             total = await reputation_service.count_snapshot(filters)
             if total == 0:
                 raise ValueError(EMPTY_APPEND_ERROR)
             check_source_size(meta["item_count"] + total)
-            source_filters = _source_filters("reputation", filters, exclude_lists)
+            source_filters = _source_filters("reputation", filters, exclude_lists, calc)
 
             async def build(lid, version):
                 await service.build_from_reputation_snapshot(
