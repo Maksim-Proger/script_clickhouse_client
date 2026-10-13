@@ -602,11 +602,13 @@ tbody tr:hover {
     font-weight: 700;
     color: var(--color-text);
     margin: 0;
+    white-space: nowrap;
 }
 .page-header__meta {
     font-size: 12px;
     color: var(--color-text-faint);
     font-weight: 500;
+    overflow-wrap: anywhere;
 }
 
 .page-header__actions {
@@ -625,6 +627,7 @@ tbody tr:hover {
     font-family: var(--font-family);
     font-size: 13px;
     font-weight: 500;
+    white-space: nowrap;
     transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
 
@@ -718,6 +721,12 @@ tbody tr:hover {
 .asn-cell {
     line-height: 1.4;
     max-width: 220px;
+}
+.calc-profile {
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 .asn-cell__org {
     font-weight: 500;

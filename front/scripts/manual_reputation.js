@@ -62,6 +62,11 @@ async function loadCalcs(page = 1) {
         const result = await requestJson(`${CALCS_URL}?page=${page}&page_size=${PAGE_SIZE}`);
         const calcs = result.data || [];
 
+        if (!calcs.length && page > 1) {
+            await loadCalcs(page - 1);
+            return;
+        }
+
         renderTable(calcs);
         renderPagination(result.page || 1, result.total_pages || 1);
 
@@ -98,19 +103,23 @@ function renderTable(calcs) {
 
     calcs.forEach(c => {
         const itemsAction = c.status === "ready"
-            ? `<button class="btn btn--secondary btn--small" onclick="window.openCalcItems(${c.id})">Элементы</button>`
+            ? `<button class="btn btn--secondary btn--small" onclick="window.openCalcItems(${c.id})">Предпросмотр</button>
+                <button class="btn btn--secondary btn--small" onclick="window.location.href='/templates/reputation.html?calc=${c.id}'">Открыть</button>`
+            : "";
+        const deleteAction = c.status !== "building"
+            ? `<button class="btn btn--danger btn--small" onclick="window.deleteCalc(${c.id})">Удалить</button>`
             : "";
 
         html += `<tr>
             <td>${c.id}</td>
             <td>${escapeHtml(c.source)}</td>
-            <td>${escapeHtml(c.profile) || "все"}</td>
+            <td><div class="calc-profile" title="${escapeHtml(c.profile)}">${escapeHtml(c.profile) || "все"}</div></td>
             <td>${renderBadge(c)}</td>
             <td>${c.status === "ready" ? c.row_count : "-"}</td>
             <td>с ${formatDate(c.period_from)}<br>по ${formatDate(c.period_to)}</td>
             <td>${formatDate(c.created_at)}</td>
             <td>${escapeHtml(c.created_by)}</td>
-            <td><div class="feed-actions">${itemsAction}</div></td>
+            <td><div class="feed-actions">${itemsAction}${deleteAction}</div></td>
         </tr>`;
     });
 
@@ -277,6 +286,20 @@ async function loadItems(page) {
         itemsTable.innerHTML = `<p style='color:var(--color-danger)'>Ошибка: ${escapeHtml(e.message)}</p>`;
     }
 }
+
+window.deleteCalc = async (calcId) => {
+    const calc = calcsById.get(calcId);
+    const target = calc ? ` (${calc.source}, профиль: ${calc.profile || "все"})` : "";
+    if (!confirm(`Удалить расчёт #${calcId}${target} безвозвратно?`)) return;
+
+    try {
+        await requestJson(`${CALCS_URL}/${calcId}`, { method: "DELETE" });
+    } catch (e) {
+        if (e.message === "Unauthorized") return;
+        alert(`Ошибка: ${e.message}`);
+    }
+    await loadCalcs(currentPage);
+};
 
 document.getElementById("btnCreateCalc").addEventListener("click", () => {
     document.querySelector('input[name="calcSource"][value="dosgate"]').checked = true;

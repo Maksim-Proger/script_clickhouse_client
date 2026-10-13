@@ -44,6 +44,7 @@ const btnConfirmAppend = document.getElementById("btnConfirmAppend");
 let currentPage = 1;
 let currentItemsListId = null;
 let appendListId = null;
+let appendCalcId = null;
 let searchDebounce = null;
 let refreshTimer = null;
 const listsById = new Map();
@@ -566,6 +567,11 @@ function fillAppendForm(source, filters) {
     document.getElementById("appendRepAsnExclude").checked = !!f.asn_exclude;
     document.getElementById("appendRepCountries").value = (f.country || []).join(", ");
     document.getElementById("appendRepCountryExclude").checked = !!f.country_exclude;
+
+    appendCalcId = f.calc_id ?? null;
+    const calcNote = document.getElementById("appendRepCalc");
+    calcNote.textContent = appendCalcId ? `Дополнение из расчёта #${appendCalcId}` : "";
+    calcNote.classList.toggle("is-hidden", !appendCalcId);
 }
 
 function collectAppendPayload() {
@@ -630,6 +636,7 @@ function collectAppendPayload() {
     }
 
     if (excludeIds.length) filters.exclude_list_ids = excludeIds;
+    if (appendCalcId) filters.calc_id = appendCalcId;
     payload.reputation_filters = filters;
     return payload;
 }

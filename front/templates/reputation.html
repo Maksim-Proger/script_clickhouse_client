@@ -61,6 +61,7 @@
             <h2 class="page-header__title">Репутация IP</h2>
             <div class="page-header__actions">
                 <span class="page-header__meta" id="snapshotMeta">Загрузка...</span>
+                <button class="header-action is-hidden" id="btnRepGeneral">Общий рейтинг</button>
                 <button class="header-action" id="btnRepFilter">Фильтры</button>
                 <button class="header-action is-hidden" id="btnRepExport">Экспорт</button>
                 <button class="header-action is-hidden" id="btnRepSaveList">В список</button>
@@ -132,7 +133,7 @@
 <dialog id="reputationExportDialog" class="modern-dialog">
     <div class="dialog-content">
         <h3>Экспорт репутации</h3>
-        <p>Экспортируется текущая выборка — с применёнными фильтрами или весь последний снапшот, если фильтров нет.</p>
+        <p>Экспортируется текущая выборка: с применёнными фильтрами или весь текущий результат, если фильтров нет.</p>
 
         <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 15px;">
             <label class="radio-option">
@@ -162,7 +163,7 @@
 <dialog id="repSaveListDialog" class="modern-dialog">
     <div class="dialog-content">
         <h3>Сохранить выборку как фид-лист</h3>
-        <p>Сохраняется текущая выборка: с применёнными фильтрами или весь последний снапшот, если фильтров нет.</p>
+        <p>Сохраняется текущая выборка: с применёнными фильтрами или весь текущий результат, если фильтров нет.</p>
 
         <label class="login-field">
             <span>Название</span>
