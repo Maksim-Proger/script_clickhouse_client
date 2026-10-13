@@ -26,6 +26,7 @@ const container = document.getElementById("reputation-list");
 const snapshotMeta = document.getElementById("snapshotMeta");
 const paginationContainer = document.getElementById("pagination-container");
 
+const btnRepGeneral = document.getElementById("btnRepGeneral");
 const btnRepFilter = document.getElementById("btnRepFilter");
 const btnRepExport = document.getElementById("btnRepExport");
 const btnRepSaveList = document.getElementById("btnRepSaveList");
@@ -46,6 +47,19 @@ let currentFilters = {};
 let currentPage = 1;
 let currentTotalPages = 1;
 let currentSearchId = null;
+
+const calcId = new URLSearchParams(window.location.search).get("calc");
+
+function withCalc(body) {
+    return calcId ? { ...body, calc_id: calcId } : body;
+}
+
+function errorText(detail, status) {
+    if (Array.isArray(detail)) {
+        return detail.map(d => d.msg || JSON.stringify(d)).join("; ");
+    }
+    return detail || `HTTP ${status}`;
+}
 
 function parseList(value) {
     return value.split(",").map(s => s.trim()).filter(Boolean);
@@ -93,8 +107,24 @@ function postReputation(body) {
     return Auth.authFetch(`${Auth.API_BASE}/ch/reputation`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body)
+        body: JSON.stringify(withCalc(body))
     });
+}
+
+async function loadCalcMeta() {
+    try {
+        const response = await Auth.authFetch(`${Auth.API_BASE}/ch/reputation/calcs/${encodeURIComponent(calcId)}`);
+        const calc = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(errorText(calc.detail, response.status));
+
+        snapshotMeta.textContent =
+            `Расчёт #${calc.id} | источник: ${calc.source} | профиль: ${calc.profile || "все"} | ` +
+            `период с ${formatDate(calc.period_from)} по ${formatDate(calc.period_to)} | ` +
+            `рассчитан ${formatDate(calc.finished_at)}`;
+    } catch (e) {
+        if (e.message === "Unauthorized") return;
+        snapshotMeta.textContent = `Ошибка: ${e.message}`;
+    }
 }
 
 async function fetchPage(page) {
@@ -111,7 +141,7 @@ async function fetchPage(page) {
 
     if (!response.ok) {
         const err = await response.json().catch(() => ({}));
-        throw new Error(err.detail || `HTTP ${response.status}`);
+        throw new Error(errorText(err.detail, response.status));
     }
 
     const result = await response.json();
@@ -171,9 +201,10 @@ function renderDetails(row) {
         ["Активных 5-мин окон", row.active_5m_windows],
         ["Активных часов", row.active_hours],
         ["Активных дней", row.active_days],
-        ["Источников", row.sources_count],
-        ["Впервые замечен", formatDate(row.first_seen)],
     ];
+    if (!calcId) items.push(["Источников", row.sources_count]);
+    items.push(["Впервые замечен", formatDate(row.first_seen)]);
+
     const cells = items.map(([label, value]) => `
         <div class="details-grid__item">
             <span class="details-grid__label">${label}</span>
@@ -195,7 +226,7 @@ function renderTable(data) {
         <th>Риск</th>
         <th>Гео</th>
         <th>ASN</th>
-        <th>Источников</th>
+        ${calcId ? "" : "<th>Источников</th>"}
         <th>Последнее событие</th>
     </tr></thead><tbody>`;
 
@@ -206,11 +237,11 @@ function renderTable(data) {
             <td>${renderRisk(row.risk_level)}</td>
             <td>${renderGeo(row)}</td>
             <td>${renderAsn(row)}</td>
-            <td>${row.sources_count}</td>
+            ${calcId ? "" : `<td>${row.sources_count}</td>`}
             <td>${formatDate(row.last_seen)}</td>
         </tr>
         <tr class="row-details is-hidden" data-details-for="${idx}">
-            <td colspan="7">${renderDetails(row)}</td>
+            <td colspan="${calcId ? 6 : 7}">${renderDetails(row)}</td>
         </tr>`;
     });
 
@@ -262,10 +293,10 @@ async function load(page = 1) {
         currentPage = result.page || page;
         currentSearchId = result.search_id || null;
 
-        if (data.length && data[0].computed_at) {
-            snapshotMeta.textContent = `Снапшот от ${formatDate(data[0].computed_at)}`;
-        } else {
-            snapshotMeta.textContent = "";
+        if (!calcId) {
+            snapshotMeta.textContent = data.length && data[0].computed_at
+                ? `Снапшот от ${formatDate(data[0].computed_at)}`
+                : "";
         }
 
         if (result.total_pages != null) currentTotalPages = result.total_pages;
@@ -278,7 +309,7 @@ async function load(page = 1) {
     } catch (e) {
         if (e.message === "Unauthorized") return;
         container.innerHTML = `<p style='padding:20px; color:var(--color-danger)'>Ошибка: ${e.message}</p>`;
-        snapshotMeta.textContent = "";
+        if (!calcId) snapshotMeta.textContent = "";
     }
 }
 
@@ -286,7 +317,7 @@ function postExport(body) {
     return Auth.authFetch(`${Auth.API_BASE}/ch/reputation/export`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body)
+        body: JSON.stringify(withCalc(body))
     });
 }
 
@@ -312,7 +343,7 @@ async function exportReputation() {
 
         if (!response.ok) {
             const err = await response.json().catch(() => ({}));
-            throw new Error(err.detail || `HTTP ${response.status}`);
+            throw new Error(errorText(err.detail, response.status));
         }
 
         const result = await response.json();
@@ -383,7 +414,7 @@ document.getElementById("btnConfirmRepSaveList").addEventListener("click", async
             name,
             description,
             source_type: "reputation",
-            reputation_filters: reputationFilters,
+            reputation_filters: withCalc(reputationFilters),
         });
         alert(`Список "${created.name}" создаётся в фоне, статус можно смотреть в каталоге фид-листов`);
         repSaveListDialog.close();
@@ -413,5 +444,14 @@ document.getElementById("btnResetRepFilters").addEventListener("click", () => {
 });
 
 document.getElementById("btnConfirmRepExport").addEventListener("click", exportReputation);
+
+btnRepGeneral.addEventListener("click", () => {
+    window.location.href = "/templates/reputation.html";
+});
+
+if (calcId) {
+    btnRepGeneral.classList.remove("is-hidden");
+    loadCalcMeta();
+}
 
 load();
