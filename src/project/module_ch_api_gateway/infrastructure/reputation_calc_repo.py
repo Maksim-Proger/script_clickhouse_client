@@ -13,15 +13,16 @@ class ReputationCalcRepository:
     def is_connected(self) -> bool:
         return self.db.is_connected
 
-    async def create_calc(self, source: str, profile: Optional[str], created_by: str) -> asyncpg.Record:
+    async def create_calc(self, source: str, profile: Optional[str], created_by: str,
+                          service: bool = False) -> asyncpg.Record:
         async with self.db.pool.acquire() as conn:
             return await conn.fetchrow(
                 """
-                INSERT INTO reputation_calcs (source, profile, created_by)
-                VALUES ($1, $2, $3)
+                INSERT INTO reputation_calcs (source, profile, created_by, service)
+                VALUES ($1, $2, $3, $4)
                 RETURNING *
                 """,
-                source, profile, created_by,
+                source, profile, created_by, service,
             )
 
     async def set_period(self, calc_id: int, period_from: datetime, period_to: datetime) -> None:
@@ -49,13 +50,15 @@ class ReputationCalcRepository:
 
     async def get_calc(self, calc_id: int) -> Optional[asyncpg.Record]:
         async with self.db.pool.acquire() as conn:
-            return await conn.fetchrow("SELECT * FROM reputation_calcs WHERE id = $1", calc_id)
+            return await conn.fetchrow(
+                "SELECT * FROM reputation_calcs WHERE id = $1 AND NOT service", calc_id,
+            )
 
     async def list_calcs(self, page: int, page_size: int) -> tuple[list[asyncpg.Record], int]:
         async with self.db.pool.acquire() as conn:
-            total = await conn.fetchval("SELECT count(*) FROM reputation_calcs")
+            total = await conn.fetchval("SELECT count(*) FROM reputation_calcs WHERE NOT service")
             rows = await conn.fetch(
-                "SELECT * FROM reputation_calcs ORDER BY id DESC LIMIT $1 OFFSET $2",
+                "SELECT * FROM reputation_calcs WHERE NOT service ORDER BY id DESC LIMIT $1 OFFSET $2",
                 page_size, (page - 1) * page_size,
             )
         return rows, int(total)
@@ -70,3 +73,11 @@ class ReputationCalcRepository:
                 "DELETE FROM reputation_calcs WHERE id = $1 AND status != 'building'",
                 calc_id,
             )
+
+    async def get_service_calcs(self) -> list[asyncpg.Record]:
+        async with self.db.pool.acquire() as conn:
+            return await conn.fetch("SELECT id FROM reputation_calcs WHERE service")
+
+    async def delete_service_calc(self, calc_id: int) -> None:
+        async with self.db.pool.acquire() as conn:
+            await conn.execute("DELETE FROM reputation_calcs WHERE id = $1 AND service", calc_id)

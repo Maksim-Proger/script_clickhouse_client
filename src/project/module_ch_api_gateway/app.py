@@ -40,6 +40,7 @@ def create_app(config: dict) -> FastAPI:
             await app.state.user_service.load_revoked_jtis()
             app.state.user_service.start_cleanup_loop()
             await app.state.feed_list_service.fail_stale_versions()
+            await app.state.reputation_calc_service.cleanup_service_calcs()
             await app.state.reputation_calc_service.fail_stale_calcs()
 
         connected = await app.state.db.connect_safe()

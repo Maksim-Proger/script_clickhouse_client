@@ -15,7 +15,10 @@ from project.module_ch_api_gateway.api.dependencies.dependencies import (
     resolve_calc,
     resolve_exclusions,
 )
-from project.module_ch_api_gateway.api.routers.reputation_router import get_reputation_service
+from project.module_ch_api_gateway.api.routers.reputation_router import (
+    get_reputation_calc_service,
+    get_reputation_service,
+)
 from project.module_ch_api_gateway.models.feed_list_schemas import (
     FeedListAppendRequest,
     FeedListCreateRequest,
@@ -33,11 +36,15 @@ from project.module_ch_api_gateway.services.feed_list_service import (
     check_source_size,
 )
 
+from project.module_ch_api_gateway.services.reputation_calc_service import CalcBusyError
+
 logger = logging.getLogger("ch-api-gateway.feed_lists")
 
 router = APIRouter(prefix="/api/feed-lists", tags=["FeedLists"])
 
 EMPTY_APPEND_ERROR = "Выборка пуста, версия не создана"
+
+REPUTATION_APPEND_SOURCES = ("reputation", "reputation_calc")
 
 
 def _user_key(user: dict) -> str:
@@ -82,7 +89,9 @@ def _source_filters(source: str, filters, exclude_lists: Optional[list[dict]],
     if exclude_lists:
         result["exclude_lists"] = [{"id": l["id"], "version": l["version"]} for l in exclude_lists]
     if calc:
-        result["calc"] = {key: calc[key] for key in ("id", "source", "profile", "period_from", "period_to")}
+        result["calc"] = {
+            key: calc[key] for key in ("id", "source", "profile", "period_from", "period_to") if key in calc
+        }
     return result
 
 
@@ -164,6 +173,8 @@ async def create_feed_list(
             return await service.create_background(
                 body.name, body.description, created_by, "reputation",
                 _source_filters("reputation", filters, exclude_lists, calc), build,
+                calc_source=calc["source"] if calc else None,
+                calc_profile=calc["profile"] if calc else None,
             )
 
         filters = body.blocked_ips_filters or CHReadFilters()
@@ -346,11 +357,19 @@ async def append_feed_list(
         service: FeedListService = Depends(get_feed_list_service),
         ch_service=Depends(get_ch_service),
         reputation_service=Depends(get_reputation_service),
+        calc_service=Depends(get_reputation_calc_service),
         user=Depends(get_interactive_user),
 ):
     _require_db(service)
     meta = await _get_list_or_404(service, list_id)
     created_by = _user_key(user)
+    service_calc_id = None
+
+    if meta["source_type"] == "reputation" and body.source not in REPUTATION_APPEND_SOURCES:
+        raise HTTPException(
+            status_code=400,
+            detail="Список создан из репутации, дополнять его можно только из репутации",
+        )
 
     try:
         if body.source == "manual":
@@ -368,18 +387,48 @@ async def append_feed_list(
         elif body.source == "reputation":
             filters = body.reputation_filters or ReputationFilters()
             filters.only_ip = False
-            calc = await resolve_calc(request, filters.calc_id)
+            if filters.calc_id is not None:
+                raise ValueError("Дополнение по номеру расчёта не поддерживается, выберите ручную репутацию")
             exclude_lists = await resolve_exclusions(request, filters.exclude_list_ids)
             total = await reputation_service.count_snapshot(filters)
             if total == 0:
                 raise ValueError(EMPTY_APPEND_ERROR)
             check_source_size(meta["item_count"] + total)
-            source_filters = _source_filters("reputation", filters, exclude_lists, calc)
+            source_filters = _source_filters("reputation", filters, exclude_lists)
 
             async def build(lid, version):
                 await service.build_from_reputation_snapshot(
                     lid, version, reputation_service, filters, exclude_lists, merge=True,
                 )
+
+        elif body.source == "reputation_calc":
+            filters = body.reputation_filters or ReputationFilters()
+            filters.only_ip = False
+            filters.calc_id = None
+            if meta["calc_source"]:
+                calc_source, calc_profile = meta["calc_source"], meta["calc_profile"]
+            else:
+                calc_source = body.calc_source
+                calc_profile = (body.calc_profile or "").strip() or None
+            if not calc_source:
+                raise ValueError("Для ручной репутации нужно указать источник (calc_source)")
+            exclude_lists = await resolve_exclusions(request, filters.exclude_list_ids)
+            source_filters = _source_filters(
+                "reputation_calc", filters, exclude_lists, {"source": calc_source, "profile": calc_profile},
+            )
+            base_count = meta["item_count"]
+            service_calc_id = (await calc_service.reserve_service_calc(calc_source, calc_profile, created_by))["id"]
+
+            async def build(lid, version, calc_id=service_calc_id):
+                try:
+                    await calc_service.run_service_calc(calc_id, calc_source, calc_profile)
+                    calc_filters = filters.model_copy(update={"calc_id": calc_id})
+                    check_source_size(base_count + await reputation_service.count_snapshot(calc_filters))
+                    await service.build_from_reputation_snapshot(
+                        lid, version, reputation_service, calc_filters, exclude_lists, merge=True,
+                    )
+                finally:
+                    await calc_service.drop_service_calc(calc_id)
 
         else:
             filters = body.blocked_ips_filters or CHReadFilters()
@@ -395,9 +444,14 @@ async def append_feed_list(
             async def build(lid, version):
                 await service.build_from_ch(lid, version, ch_service, filters, exclude_lists, merge=True)
 
-        result = await service.append_to_list(list_id, source_filters, build, created_by)
+        try:
+            result = await service.append_to_list(list_id, source_filters, build, created_by)
+        except Exception:
+            if service_calc_id is not None:
+                await calc_service.drop_service_calc(service_calc_id)
+            raise
 
-    except (ListBusyError, ListArchivedError) as e:
+    except (ListBusyError, ListArchivedError, CalcBusyError) as e:
         raise HTTPException(status_code=409, detail=str(e))
     except LookupError as e:
         raise HTTPException(status_code=404, detail=str(e))

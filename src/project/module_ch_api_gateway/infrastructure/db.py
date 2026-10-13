@@ -184,6 +184,23 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_reputation_calcs_one_per_target
     WHERE status = 'building';
 """
 
+UPGRADE_REPUTATION_LINKS = [
+    "ALTER TABLE reputation_calcs ADD COLUMN IF NOT EXISTS service BOOLEAN NOT NULL DEFAULT FALSE",
+    "ALTER TABLE feed_lists ADD COLUMN IF NOT EXISTS calc_source VARCHAR(30)",
+    "ALTER TABLE feed_lists ADD COLUMN IF NOT EXISTS calc_profile VARCHAR(150)",
+    """
+    UPDATE feed_lists l
+    SET calc_source = v.source_filters -> 'calc' ->> 'source',
+        calc_profile = v.source_filters -> 'calc' ->> 'profile'
+    FROM feed_list_versions v
+    WHERE v.list_id = l.id
+      AND v.build_kind = 'create'
+      AND l.source_type = 'reputation'
+      AND l.calc_source IS NULL
+      AND v.source_filters -> 'calc' ->> 'source' IS NOT NULL
+    """,
+]
+
 UPGRADE_SEARCH_TABLES = [
     "ALTER TABLE search_sessions SET UNLOGGED",
     "ALTER TABLE search_session_rows SET UNLOGGED",
@@ -357,6 +374,8 @@ class DatabaseManager:
             await conn.execute(CREATE_REPUTATION_CALCS_TABLE)
             await conn.execute(CREATE_REPUTATION_CALCS_USER_INDEX)
             await conn.execute(CREATE_REPUTATION_CALCS_TARGET_INDEX)
+            for statement in UPGRADE_REPUTATION_LINKS:
+                await conn.execute(statement)
 
     async def get_user_by_username(self, username: str) -> Optional[asyncpg.Record]:
         async with self.pool.acquire() as conn:

@@ -44,7 +44,6 @@ const btnConfirmAppend = document.getElementById("btnConfirmAppend");
 let currentPage = 1;
 let currentItemsListId = null;
 let appendListId = null;
-let appendCalcId = null;
 let searchDebounce = null;
 let refreshTimer = null;
 const listsById = new Map();
@@ -62,6 +61,13 @@ const SOURCE_LABELS = {
     blocked_ips: "CH / blocked_ips",
     manual: "Вручную",
 };
+
+function renderSource(l) {
+    if (l.source_type === "reputation" && l.calc_source) {
+        return `Репутация: ${escapeHtml(l.calc_source)}, ${escapeHtml(l.calc_profile) || "все профили"}`;
+    }
+    return SOURCE_LABELS[l.source_type] || escapeHtml(l.source_type);
+}
 
 function formatDate(s) {
     if (!s) return "-";
@@ -147,7 +153,7 @@ function renderTable(lists) {
             <td>${l.id}</td>
             <td>${escapeHtml(l.name)}</td>
             <td title="${escapeHtml(l.description)}">${escapeHtml(truncate(l.description, 60))}</td>
-            <td>${SOURCE_LABELS[l.source_type] || escapeHtml(l.source_type)}</td>
+            <td>${renderSource(l)}</td>
             <td>${renderBadge(l)}</td>
             <td>${l.item_count}</td>
             <td>${l.current_version ? "v" + l.current_version : "-"}</td>
@@ -531,21 +537,50 @@ window.restoreVersion = async (listId, version) => {
     }
 };
 
-const APPEND_SOURCES = ["manual", "blocked_ips", "reputation"];
+const APPEND_SOURCES = ["manual", "blocked_ips", "reputation", "reputation_calc"];
+const REPUTATION_APPEND_SOURCES = ["reputation", "reputation_calc"];
+
+let appendAllowed = APPEND_SOURCES;
+let appendCalcLocked = false;
 
 function appendFilterValue(id) {
     return document.getElementById(id).value.trim();
 }
 
 function showAppendSource(source) {
-    APPEND_SOURCES.forEach(name => {
-        document.getElementById(`appendBlock_${name}`).classList.toggle("is-hidden", name !== source);
-    });
+    const fromReputation = REPUTATION_APPEND_SOURCES.includes(source);
+    document.getElementById("appendBlock_manual").classList.toggle("is-hidden", source !== "manual");
+    document.getElementById("appendBlock_blocked_ips").classList.toggle("is-hidden", source !== "blocked_ips");
+    document.getElementById("appendBlock_reputation_calc").classList.toggle("is-hidden", source !== "reputation_calc");
+    document.getElementById("appendBlock_reputation").classList.toggle("is-hidden", !fromReputation);
     document.getElementById("appendExcludeBlock").classList.toggle("is-hidden", source === "manual");
 }
 
-function fillAppendForm(source, filters) {
-    const known = APPEND_SOURCES.includes(source) ? source : "manual";
+function fillAppendCalc(source, profile) {
+    const known = source === "ipban" ? "ipban" : "dosgate";
+    document.querySelector(`input[name="appendCalcSource"][value="${known}"]`).checked = true;
+    document.getElementById("appendCalcProfile").value = profile || "";
+}
+
+function setupAppendSources(list) {
+    appendAllowed = list?.source_type === "reputation" ? REPUTATION_APPEND_SOURCES : APPEND_SOURCES;
+    document.querySelectorAll('input[name="appendSource"]').forEach(radio => {
+        radio.closest("label").classList.toggle("is-hidden", !appendAllowed.includes(radio.value));
+    });
+
+    appendCalcLocked = !!list?.calc_source;
+    document.querySelectorAll('input[name="appendCalcSource"]').forEach(radio => {
+        radio.disabled = appendCalcLocked;
+    });
+    document.getElementById("appendCalcProfile").disabled = appendCalcLocked;
+    document.getElementById("appendCalcNote").textContent = appendCalcLocked
+        ? "Репутация будет рассчитана заново по источнику и профилю, из которых создан список."
+        : "Репутация будет рассчитана заново по выбранным источнику и профилю за последние 7 дней.";
+    fillAppendCalc(list?.calc_source, list?.calc_profile);
+}
+
+function fillAppendForm(source, filters, calc) {
+    const known = appendAllowed.includes(source) ? source : appendAllowed[0];
 
     showAppendSource(known);
     document.querySelector(`input[name="appendSource"][value="${known}"]`).checked = true;
@@ -567,11 +602,7 @@ function fillAppendForm(source, filters) {
     document.getElementById("appendRepAsnExclude").checked = !!f.asn_exclude;
     document.getElementById("appendRepCountries").value = (f.country || []).join(", ");
     document.getElementById("appendRepCountryExclude").checked = !!f.country_exclude;
-
-    appendCalcId = f.calc_id ?? null;
-    const calcNote = document.getElementById("appendRepCalc");
-    calcNote.textContent = appendCalcId ? `Дополнение из расчёта #${appendCalcId}` : "";
-    calcNote.classList.toggle("is-hidden", !appendCalcId);
+    if (!appendCalcLocked && calc?.source) fillAppendCalc(calc.source, calc.profile);
 }
 
 function collectAppendPayload() {
@@ -636,8 +667,12 @@ function collectAppendPayload() {
     }
 
     if (excludeIds.length) filters.exclude_list_ids = excludeIds;
-    if (appendCalcId) filters.calc_id = appendCalcId;
     payload.reputation_filters = filters;
+
+    if (source === "reputation_calc") {
+        payload.calc_source = document.querySelector('input[name="appendCalcSource"]:checked').value;
+        payload.calc_profile = appendFilterValue("appendCalcProfile") || null;
+    }
     return payload;
 }
 
@@ -655,7 +690,8 @@ async function activeExcludeIds(ids) {
 window.openAppendDialog = async (listId) => {
     appendListId = listId;
     appendTitle.textContent = `Изменение списка "${listsById.get(listId)?.name ?? "#" + listId}"`;
-    fillAppendForm("manual", null);
+    setupAppendSources(listsById.get(listId));
+    fillAppendForm(appendAllowed[0], null);
 
     const excludeNote = document.getElementById("appendExcludeNote");
     const excludeContainer = document.getElementById("appendExcludeLists");
@@ -673,7 +709,9 @@ window.openAppendDialog = async (listId) => {
         const applied = card.source_filters;
         if (!applied || !applied.source || appendListId !== listId) return;
 
-        fillAppendForm(applied.source, applied.filters);
+        setupAppendSources(card);
+        const builtFromCalc = applied.source === "reputation" && applied.calc;
+        fillAppendForm(builtFromCalc ? "reputation_calc" : applied.source, applied.filters, applied.calc);
 
         const appliedIds = applied.filters?.exclude_list_ids || [];
         const keptIds = await activeExcludeIds(appliedIds);
