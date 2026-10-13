@@ -4,12 +4,17 @@ from fastapi.responses import StreamingResponse
 from project.module_ch_api_gateway.api.dependencies.dependencies import (
     get_current_user,
     get_interactive_user,
+    resolve_calc,
     resolve_exclusions,
 )
 from project.module_ch_api_gateway.models.filters import ReputationFilters
 from project.module_ch_api_gateway.models.reputation_calc_schemas import ReputationCalcRequest
 from project.module_ch_api_gateway.services.feed_list_service import SessionExpiredError, SourceUnavailableError
-from project.module_ch_api_gateway.services.reputation_calc_service import CalcBusyError, ReputationCalcService
+from project.module_ch_api_gateway.services.reputation_calc_service import (
+    CalcBusyError,
+    CalcDeleteError,
+    ReputationCalcService,
+)
 from project.module_ch_api_gateway.services.reputation_service import ReputationService, needs_session
 
 router = APIRouter(prefix="/ch", tags=["Reputation"])
@@ -58,6 +63,7 @@ async def get_reputation(
         user=Depends(get_current_user),
 ):
     f = filters or ReputationFilters()
+    await resolve_calc(request, f.calc_id)
     exclude_lists = await resolve_exclusions(request, f.exclude_list_ids)
     _require_db(request, f)
     try:
@@ -80,6 +86,7 @@ async def export_reputation(
         user=Depends(get_current_user),
 ):
     f = filters or ReputationFilters()
+    await resolve_calc(request, f.calc_id)
     exclude_lists = await resolve_exclusions(request, f.exclude_list_ids)
     _require_db(request, f)
 
@@ -153,21 +160,33 @@ async def get_reputation_calc(
 
 @router.get("/reputation/calcs/{calc_id}/rows")
 async def get_reputation_calc_rows(
+        request: Request,
         calc_id: int,
         page: int = Query(1, ge=1),
         page_size: int = Query(100, ge=1, le=1000),
-        service: ReputationCalcService = Depends(get_reputation_calc_service),
         reputation_service: ReputationService = Depends(get_reputation_service),
         user=Depends(get_current_user),
 ):
-    _require_calc_db(service)
-    calc = await _get_calc_or_404(service, calc_id)
-    if calc["status"] == "building":
-        raise HTTPException(status_code=409, detail="Расчёт ещё выполняется")
-    if calc["status"] != "ready":
-        raise HTTPException(status_code=409, detail="Расчёт завершился ошибкой")
+    calc = await resolve_calc(request, calc_id)
 
     try:
         return await reputation_service.get_calc_page(calc_id, calc["row_count"], page, page_size)
     except SourceUnavailableError:
         raise HTTPException(status_code=503, detail="Источник данных временно недоступен")
+
+
+@router.delete("/reputation/calcs/{calc_id}")
+async def delete_reputation_calc(
+        calc_id: int,
+        service: ReputationCalcService = Depends(get_reputation_calc_service),
+        user=Depends(get_interactive_user),
+):
+    _require_calc_db(service)
+    calc = await _get_calc_or_404(service, calc_id)
+    if calc["status"] == "building":
+        raise HTTPException(status_code=409, detail="Расчёт ещё выполняется, дождитесь завершения")
+    try:
+        await service.delete_calc(calc_id, _user_key(user))
+    except CalcDeleteError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    return {"ok": True}

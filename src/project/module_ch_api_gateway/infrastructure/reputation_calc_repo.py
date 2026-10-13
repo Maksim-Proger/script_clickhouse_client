@@ -1,7 +1,6 @@
+import asyncpg
 from datetime import datetime
 from typing import Optional
-
-import asyncpg
 
 from project.module_ch_api_gateway.infrastructure.db import DatabaseManager
 
@@ -64,3 +63,10 @@ class ReputationCalcRepository:
     async def get_building_calcs(self) -> list[asyncpg.Record]:
         async with self.db.pool.acquire() as conn:
             return await conn.fetch("SELECT id FROM reputation_calcs WHERE status = 'building'")
+
+    async def delete_calc(self, calc_id: int) -> None:
+        async with self.db.pool.acquire() as conn:
+            await conn.execute(
+                "DELETE FROM reputation_calcs WHERE id = $1 AND status != 'building'",
+                calc_id,
+            )
