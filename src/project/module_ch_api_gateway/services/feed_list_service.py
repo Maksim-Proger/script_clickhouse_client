@@ -499,11 +499,14 @@ class FeedListService:
             source_type: str,
             source_filters: dict,
             builder,
+            calc_source: Optional[str] = None,
+            calc_profile: Optional[str] = None,
     ) -> dict:
         async with self.repo.db.pool.acquire() as conn:
             async with conn.transaction():
                 row = await self.repo.create_list(
                     conn, name.strip(), description.strip(), created_by, source_type,
+                    calc_source, calc_profile,
                 )
                 await self.repo.create_version(
                     conn, row["id"], 1, "building", "create",

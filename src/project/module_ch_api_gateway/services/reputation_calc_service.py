@@ -36,13 +36,17 @@ class ReputationCalcService:
     def is_available(self) -> bool:
         return self.repo.is_connected
 
-    async def start_calc(self, source: str, profile: Optional[str], created_by: str) -> dict:
+    async def _create(self, source: str, profile: Optional[str], created_by: str,
+                      service: bool = False) -> dict:
         try:
-            row = await self.repo.create_calc(source, profile, created_by)
+            return dict(await self.repo.create_calc(source, profile, created_by, service))
         except asyncpg.UniqueViolationError as e:
             if e.constraint_name == "idx_reputation_calcs_one_per_user":
                 raise CalcBusyError("У вас уже идёт расчёт, дождитесь его завершения")
             raise CalcBusyError("Расчёт по этому источнику и профилю уже идёт, дождитесь его завершения")
+
+    async def start_calc(self, source: str, profile: Optional[str], created_by: str) -> dict:
+        row = await self._create(source, profile, created_by)
 
         logger.info(
             "action=reputation_calc_started id=%d source=%s profile=%s user=%s",
@@ -51,23 +55,27 @@ class ReputationCalcService:
         task = asyncio.create_task(self._run(row["id"], source, profile))
         self._background_tasks.add(task)
         task.add_done_callback(self._background_tasks.discard)
-        return dict(row)
+        return row
+
+    async def _execute(self, calc_id: int, source: str, profile: Optional[str]) -> int:
+        period_to = await self.ch.now()
+        period_from = period_to - timedelta(days=CALC_PERIOD_DAYS)
+        await self.repo.set_period(calc_id, period_from, period_to)
+
+        written = await self.ch.calc(calc_id, period_to, source, profile)
+        count = await self.ch.count(calc_id)
+        if count != written:
+            await asyncio.sleep(COUNT_RETRY_DELAY)
+            count = await self.ch.count(calc_id)
+        if count != written:
+            raise CalcCountError(f"Результат записан не полностью: рассчитано {written}, в ClickHouse {count}")
+
+        await self.repo.finish_calc(calc_id, count)
+        return count
 
     async def _run(self, calc_id: int, source: str, profile: Optional[str]) -> None:
         try:
-            period_to = await self.ch.now()
-            period_from = period_to - timedelta(days=CALC_PERIOD_DAYS)
-            await self.repo.set_period(calc_id, period_from, period_to)
-
-            written = await self.ch.calc(calc_id, period_to, source, profile)
-            count = await self.ch.count(calc_id)
-            if count != written:
-                await asyncio.sleep(COUNT_RETRY_DELAY)
-                count = await self.ch.count(calc_id)
-            if count != written:
-                raise CalcCountError(f"Результат записан не полностью: рассчитано {written}, в ClickHouse {count}")
-
-            await self.repo.finish_calc(calc_id, count)
+            count = await self._execute(calc_id, source, profile)
             logger.info(
                 "action=reputation_calc_done id=%d source=%s profile=%s rows=%d",
                 calc_id, source, profile, count,
@@ -102,3 +110,36 @@ class ReputationCalcService:
             logger.error("action=reputation_calc_delete_failed id=%d error=%s", calc_id, str(e))
             raise CalcDeleteError("Не удалось удалить расчёт, повторите позже")
         logger.info("action=reputation_calc_deleted id=%d user=%s", calc_id, user)
+
+    async def reserve_service_calc(self, source: str, profile: Optional[str], created_by: str) -> dict:
+        row = await self._create(source, profile, created_by, service=True)
+        logger.info(
+            "action=reputation_service_calc_reserved id=%d source=%s profile=%s user=%s",
+            row["id"], source, profile, created_by,
+        )
+        return row
+
+    async def run_service_calc(self, calc_id: int, source: str, profile: Optional[str]) -> int:
+        try:
+            return await self._execute(calc_id, source, profile)
+        except CalcCountError:
+            raise
+        except Exception as e:
+            logger.error("action=reputation_service_calc_failed id=%d error=%s", calc_id, str(e))
+            raise RuntimeError("Ошибка расчёта репутации, подробности в логе")
+
+    async def drop_service_calc(self, calc_id: int) -> None:
+        try:
+            await self.ch.clear(calc_id)
+            await self.repo.delete_service_calc(calc_id)
+        except Exception as e:
+            logger.error("action=reputation_service_calc_drop_failed id=%d error=%s", calc_id, str(e))
+            try:
+                await self.repo.fail_calc(calc_id, "Служебный расчёт не удалён, будет убран при перезапуске")
+            except Exception as e2:
+                logger.error("action=reputation_service_calc_fail_save_failed id=%d error=%s", calc_id, str(e2))
+
+    async def cleanup_service_calcs(self) -> None:
+        for row in await self.repo.get_service_calcs():
+            logger.warning("action=reputation_service_calc_cleanup id=%d", row["id"])
+            await self.drop_service_calc(row["id"])

@@ -21,6 +21,7 @@ _ITEM_SELECT = (
 _CATALOG_SELECT = """
     SELECT l.id, l.name, l.description, l.created_by, l.created_at, l.updated_at,
            l.status, l.source_type, l.current_version, l.last_error,
+           l.calc_source, l.calc_profile,
            coalesce(cur.item_count, 0) AS item_count,
            cur.source_filters,
            EXISTS (SELECT 1 FROM feed_list_versions h
@@ -48,14 +49,16 @@ class FeedListRepository:
                           name: str,
                           description: str,
                           created_by: str,
-                          source_type: str) -> asyncpg.Record:
+                          source_type: str,
+                          calc_source: Optional[str] = None,
+                          calc_profile: Optional[str] = None) -> asyncpg.Record:
         return await conn.fetchrow(
             """
-            INSERT INTO feed_lists (name, description, created_by, source_type)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO feed_lists (name, description, created_by, source_type, calc_source, calc_profile)
+            VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING *
             """,
-            name, description, created_by, source_type,
+            name, description, created_by, source_type, calc_source, calc_profile,
         )
 
     async def insert_items(self, list_id: int, version: int, items: list[tuple]) -> None:
