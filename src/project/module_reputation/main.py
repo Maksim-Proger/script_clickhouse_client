@@ -14,7 +14,7 @@ def main(config: dict) -> None:
         lifecycle = Lifecycle()
         lifecycle.install_signal_handlers()
 
-        client = ReputationCHClient(config["clickhouse"])
+        client = ReputationCHClient(config["clickhouse"], config["geo"])
         job = ReputationJob(
             client=client,
             interval_hours=config["job"]["interval_hours"],
@@ -30,7 +30,6 @@ def main(config: dict) -> None:
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
 
-        client.close()
         logger.info("action=process_stop status=clean")
 
     asyncio.run(run())
