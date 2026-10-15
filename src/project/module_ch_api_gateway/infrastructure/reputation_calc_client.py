@@ -1,12 +1,12 @@
 import asyncio
 import logging
 import random
+from clickhouse_driver import Client as CHClient
 from datetime import datetime
 from typing import Optional
 
-from clickhouse_driver import Client as CHClient
-
-from project.utils.reputation_sql import build_scoring_sql
+from project.utils.geo import CountryResolver, prepare_geo
+from project.utils.reputation_sql import build_scoring_sql, window_where
 
 logger = logging.getLogger("ch-api-gateway.reputation_calcs")
 
@@ -15,7 +15,9 @@ _INSERT_SQL = """
               (calc_id, computed_at, ip_address, score, risk_level,
                events_count, max_5m_events, max_hour_events,
                active_5m_windows, active_hours, active_days,
-               sources_count, first_seen, last_seen)
+               sources_count, first_seen, last_seen,
+               base_score, geo_coefficient, geo_bonus, geo_country, geo_category,
+               geo_matrix_version, geo_version)
               VALUES \
               """
 
@@ -25,8 +27,9 @@ _DROP_PARTITION_SQL = "ALTER TABLE feedgen.ip_reputation_calcs_data DROP PARTITI
 
 
 class ReputationCalcClient:
-    def __init__(self, cfg: dict):
+    def __init__(self, cfg: dict, country_db_path: str):
         self._cfg = cfg
+        self._country_db_path = country_db_path
 
     def _client(self, host: str) -> CHClient:
         return CHClient(
@@ -46,15 +49,25 @@ class ReputationCalcClient:
             client.disconnect()
 
     def _calc_sync(self, calc_id: int, period_to: datetime, source: str, profile: Optional[str]) -> int:
-        sql = build_scoring_sql("toDateTime(%(period_to)s)", by_source=True, by_profile=profile is not None)
-        params = {"period_to": period_to, "source": source, "profile": profile}
-        rows = self._execute_sync(self._cfg["host"], sql, params)
-        if not rows:
-            return 0
-
-        rows = [(calc_id, *row[1:]) for row in rows]
+        by_profile = profile is not None
+        params = {"now_utc": period_to, "source": source, "profile": profile}
         host = random.choice(self._cfg["write_hosts"])
-        self._execute_sync(host, _INSERT_SQL, rows)
+        client = self._client(host)
+        try:
+            with CountryResolver(self._country_db_path) as resolver:
+                geo = prepare_geo(
+                    client, resolver, period_to,
+                    window_where(by_source=True, by_profile=by_profile), params,
+                )
+            rows = client.execute(build_scoring_sql(by_source=True, by_profile=by_profile), {**params, **geo})
+            if not rows:
+                return 0
+
+            rows = [(calc_id, *row[1:]) for row in rows]
+            client.execute(_INSERT_SQL, rows)
+        finally:
+            client.disconnect()
+
         logger.info("action=reputation_calc_insert_done id=%d rows=%d host=%s", calc_id, len(rows), host)
         return len(rows)
 

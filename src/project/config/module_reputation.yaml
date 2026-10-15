@@ -13,3 +13,14 @@ job:
   retry_attempts: 3
   retry_delay_seconds: 60
 
+geo:
+  country_db_path: "/opt/geoip/RU-GeoIP-Country.mmdb"
+  max_bonus: 5.0
+  min_ips: 200
+  min_prefixes: 20
+  high_share: 0.03
+  high_ip_share: 0.01
+  elevated_share: 0.01
+  noticeable_share: 0.001
+  neutral: [ "RU", "BY", "AM", "KZ", "GE", "AZ", "KG", "UZ", "TJ", "MD" ]
+

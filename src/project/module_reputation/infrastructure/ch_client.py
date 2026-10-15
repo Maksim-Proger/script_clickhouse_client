@@ -1,11 +1,11 @@
 import asyncio
 import logging
 import random
-from typing import Optional
-
 from clickhouse_driver import Client as CHClient
+from project.module_reputation.infrastructure.geo_matrix import GeoMatrixBuilder
 
-from project.utils.reputation_sql import build_scoring_sql
+from project.utils.geo import CountryResolver, prepare_geo
+from project.utils.reputation_sql import build_scoring_sql, window_where
 
 logger = logging.getLogger("reputation.ch_client")
 
@@ -16,65 +16,54 @@ _INSERT_SQL = """
               (run_id, computed_at, ip_address, score, risk_level,
                events_count, max_5m_events, max_hour_events,
                active_5m_windows, active_hours, active_days,
-               sources_count, first_seen, last_seen)
+               sources_count, first_seen, last_seen,
+               base_score, geo_coefficient, geo_bonus, geo_country, geo_category,
+               geo_matrix_version, geo_version)
               VALUES \
               """
 
 
 class ReputationCHClient:
-    def __init__(self, cfg: dict):
+    def __init__(self, cfg: dict, geo_cfg: dict):
         self._cfg = cfg
-        self._client: Optional[CHClient] = None
+        self._geo_cfg = geo_cfg
+        self._matrix = GeoMatrixBuilder(geo_cfg)
 
-    def _get_client(self) -> CHClient:
-        if self._client is None:
-            self._client = CHClient(
-                host=self._cfg["host"],
-                port=self._cfg["port"],
-                database=self._cfg["database"],
-                user=self._cfg["user"],
-                password=self._cfg["password"],
-            )
-        return self._client
-
-    def _create_write_client(self) -> CHClient:
-        write_hosts = self._cfg["write_hosts"]
-        chosen_host = random.choice(write_hosts)
-        logger.info("action=write_client_init target_write_host=%s", chosen_host)
+    def _create_client(self) -> CHClient:
+        chosen_host = random.choice(self._cfg["write_hosts"])
+        logger.info("action=client_init target_host=%s", chosen_host)
         return CHClient(
             host=chosen_host,
             port=self._cfg["port"],
             database=self._cfg["database"],
             user=self._cfg["user"],
             password=self._cfg["password"],
+            send_receive_timeout=self._cfg.get("send_receive_timeout", 900),
         )
 
     def _run_snapshot_sync(self) -> int:
-        read_client = self._get_client()
-
-        logger.info("action=scoring_query_start")
-        rows = read_client.execute(_SCORING_SQL)
-
-        if not rows:
-            logger.warning("action=scoring_empty message='Query returned 0 candidates'")
-            return 0
-
-        logger.info("action=scoring_query_done candidates=%d", len(rows))
-
-        write_client = self._create_write_client()
+        client = self._create_client()
         try:
-            write_client.execute(_INSERT_SQL, rows)
+            now_utc = client.execute("SELECT now()")[0][0]
+
+            with CountryResolver(self._geo_cfg["country_db_path"]) as resolver:
+                self._matrix.ensure(client, resolver, now_utc)
+                geo = prepare_geo(client, resolver, now_utc, window_where(), {}, self._matrix.rules_version)
+
+            logger.info("action=scoring_query_start matrix_version=%s", geo["matrix_version"] or "none")
+            rows = client.execute(_SCORING_SQL, {"now_utc": now_utc, **geo})
+
+            if not rows:
+                logger.warning("action=scoring_empty message='Query returned 0 candidates'")
+                return 0
+
+            logger.info("action=scoring_query_done candidates=%d", len(rows))
+            client.execute(_INSERT_SQL, rows)
         finally:
-            write_client.disconnect()
+            client.disconnect()
 
         logger.info("action=snapshot_insert_done rows=%d", len(rows))
         return len(rows)
 
     async def run_snapshot(self) -> int:
         return await asyncio.to_thread(self._run_snapshot_sync)
-
-    def close(self) -> None:
-        if self._client:
-            self._client.disconnect()
-            self._client = None
-            logger.info("action=ch_client_close status=ok")
