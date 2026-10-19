@@ -7,6 +7,7 @@ import {
     getCheckedExcludeIds,
     clearExcludeSelection,
     createFeedList,
+    riskLabel,
 } from './feed_lists_api.js';
 
 const LOGIN_PAGE = '/templates/new_index.html';
@@ -190,7 +191,7 @@ function renderScore(row) {
 function renderRisk(level) {
     const known = ["suspicious", "bad", "high", "critical"];
     const cls = known.includes(level) ? `risk--${level}` : "risk--suspicious";
-    return `<span class="risk ${cls}">${level}</span>`;
+    return `<span class="risk ${cls}">${riskLabel(level)}</span>`;
 }
 
 function renderDetails(row) {
@@ -204,6 +205,9 @@ function renderDetails(row) {
     ];
     if (!calcId) items.push(["Источников", row.sources_count]);
     items.push(["Впервые замечен", formatDate(row.first_seen)]);
+    items.push(["Базовый score", row.base_score]);
+    items.push(["Гео-надбавка", row.geo_bonus]);
+    items.push(["Категория страны", row.geo_category || null]);
 
     const cells = items.map(([label, value]) => `
         <div class="details-grid__item">

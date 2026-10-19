@@ -2,6 +2,7 @@ import asyncio
 import ipaddress
 import json
 import logging
+import re
 from typing import Optional
 
 from project.module_ch_api_gateway.services.clickhouse_service import build_exclude_conditions
@@ -29,8 +30,12 @@ _CALC_TABLE = "feedgen.ip_reputation_calcs"
 
 _SELECT_COLS = (
     "ip_address, score, risk_level, events_count, max_5m_events, max_hour_events, "
-    "active_5m_windows, active_hours, active_days, sources_count, first_seen, last_seen, computed_at"
+    "active_5m_windows, active_hours, active_days, sources_count, first_seen, last_seen, computed_at, "
+    "base_score, geo_bonus, geo_coefficient, geo_category, "
+    "if(geo_country IN ('', 'ZZ'), NULL, geo_country) AS country"
 )
+
+_COUNTRY_RE = re.compile(r"^[A-Z]{2}$")
 
 _INT_FIELDS = (
     "events_count", "max_5m_events", "max_hour_events",
@@ -49,6 +54,14 @@ def _table(filters: ReputationFilters) -> str:
     return _CALC_TABLE if filters.calc_id is not None else _SNAPSHOT_TABLE
 
 
+def check_country_codes(filters: ReputationFilters) -> list[str]:
+    codes = [c.strip().upper() for c in filters.country if c.strip()]
+    for code in codes:
+        if not _COUNTRY_RE.match(code):
+            raise ValueError("Код страны должен состоять из двух латинских букв, например DE")
+    return codes
+
+
 def _build_where(filters: ReputationFilters, exclude_lists: Optional[list[dict]] = None) -> str:
     if filters.calc_id is not None:
         conditions = [f"calc_id = {int(filters.calc_id)}"]
@@ -61,6 +74,12 @@ def _build_where(filters: ReputationFilters, exclude_lists: Optional[list[dict]]
         conditions.append(f"score <= {float(filters.score_to)}")
     if filters.ip:
         conditions.append(f"isIPAddressInRange(IPv4NumToString(ip_address), '{_safe_cidr(filters.ip)}')")
+
+    codes = check_country_codes(filters)
+    if codes:
+        operator = "NOT IN" if filters.country_exclude else "IN"
+        values = ", ".join(f"'{c}'" for c in codes)
+        conditions.append(f"geo_country {operator} ({values})")
 
     conditions.extend(build_exclude_conditions(exclude_lists))
 
@@ -88,7 +107,7 @@ def _coerce_ints(records: list[dict]) -> list[dict]:
 
 
 def _has_geo_filter(filters: ReputationFilters) -> bool:
-    return bool(filters.asn) or bool(filters.country)
+    return bool(filters.asn)
 
 
 def needs_session(filters: ReputationFilters) -> bool:
@@ -102,13 +121,6 @@ def _apply_geo_filter(records: list[dict], filters: ReputationFilters) -> list[d
             records = [r for r in records if r.get("asn_number") not in asn_set]
         else:
             records = [r for r in records if r.get("asn_number") in asn_set]
-
-    if filters.country:
-        country_set = {c.strip().upper() for c in filters.country if c.strip()}
-        if filters.country_exclude:
-            records = [r for r in records if (r.get("country") or "").upper() not in country_set]
-        else:
-            records = [r for r in records if (r.get("country") or "").upper() in country_set]
 
     return records
 
@@ -148,6 +160,8 @@ class ReputationService:
         try:
             res = await self.ch_client.fetch_json(_build_count_query(_table(filters), _build_where(filters)))
             return int(res["data"][0]["total"])
+        except ValueError:
+            raise
         except Exception as e:
             logger.error("action=reputation_count_failed error=%s", str(e))
             raise SourceUnavailableError()

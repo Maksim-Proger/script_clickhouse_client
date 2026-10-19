@@ -1,6 +1,6 @@
 import * as Auth from './auth.js';
 import { requireAuthOrRedirect, initProfilePanel } from './app_shell.js';
-import { escapeHtml } from './feed_lists_api.js';
+import { escapeHtml, riskLabel } from './feed_lists_api.js';
 
 const LOGIN_PAGE = '/templates/new_index.html';
 const CALCS_URL = `${Auth.API_BASE}/ch/reputation/calcs`;
@@ -165,7 +165,7 @@ function renderScore(row) {
 function renderRisk(level) {
     const known = ["suspicious", "bad", "high", "critical"];
     const cls = known.includes(level) ? `risk--${level}` : "risk--suspicious";
-    return `<span class="risk ${cls}">${escapeHtml(level)}</span>`;
+    return `<span class="risk ${cls}">${escapeHtml(riskLabel(level))}</span>`;
 }
 
 function renderGeo(row) {
@@ -200,6 +200,9 @@ function renderDetails(row) {
         ["Активных часов", row.active_hours],
         ["Активных дней", row.active_days],
         ["Впервые замечен", formatDate(row.first_seen)],
+        ["Базовый score", row.base_score],
+        ["Гео-надбавка", row.geo_bonus],
+        ["Категория страны", row.geo_category || null],
     ];
     const cells = items.map(([label, value]) => `
         <div class="details-grid__item">
