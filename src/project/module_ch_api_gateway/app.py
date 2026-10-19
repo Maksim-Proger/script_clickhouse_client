@@ -107,7 +107,6 @@ def create_app(config: dict) -> FastAPI:
     )
 
     app.state.geoip_client = GeoIPClient(
-        country_db_path=config["geoip"]["country_db_path"],
         asn_db_path=config["geoip"]["asn_db_path"],
     )
     app.state.geoip_client.open()

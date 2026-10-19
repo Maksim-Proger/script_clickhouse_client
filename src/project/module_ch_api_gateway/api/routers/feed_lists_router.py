@@ -37,6 +37,7 @@ from project.module_ch_api_gateway.services.feed_list_service import (
 )
 
 from project.module_ch_api_gateway.services.reputation_calc_service import CalcBusyError
+from project.module_ch_api_gateway.services.reputation_service import check_country_codes
 
 logger = logging.getLogger("ch-api-gateway.feed_lists")
 
@@ -405,6 +406,7 @@ async def append_feed_list(
             filters = body.reputation_filters or ReputationFilters()
             filters.only_ip = False
             filters.calc_id = None
+            check_country_codes(filters)
             if meta["calc_source"]:
                 calc_source, calc_profile = meta["calc_source"], meta["calc_profile"]
             else:

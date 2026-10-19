@@ -4,6 +4,7 @@ import {
     fetchFeedLists,
     createFeedList,
     escapeHtml,
+    riskLabel,
     renderExcludeOptions,
     getCheckedExcludeIds,
     hasForbiddenNameChars,
@@ -308,7 +309,7 @@ function renderItemRisk(level) {
     if (!level) return "-";
     const known = ["suspicious", "bad", "high", "critical"];
     const cls = known.includes(level) ? `risk--${level}` : "risk--suspicious";
-    return `<span class="risk ${cls}">${escapeHtml(level)}</span>`;
+    return `<span class="risk ${cls}">${escapeHtml(riskLabel(level))}</span>`;
 }
 
 function renderPagination(page, totalPages) {

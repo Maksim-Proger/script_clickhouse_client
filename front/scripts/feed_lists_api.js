@@ -18,6 +18,18 @@ export function escapeHtml(value) {
         .replaceAll('"', "&quot;");
 }
 
+const RISK_LABELS = {
+    critical: "критический",
+    high: "высокий",
+    bad: "плохой",
+    suspicious: "подозрительный",
+    low: "низкий",
+};
+
+export function riskLabel(level) {
+    return RISK_LABELS[level] || level;
+}
+
 export async function fetchFeedLists({ search = "", status = "", page = 1, pageSize = EXCLUDE_PAGE_SIZE } = {}) {
     const params = new URLSearchParams({ page, page_size: pageSize });
     if (search) params.set("search", search);
