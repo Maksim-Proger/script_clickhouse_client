@@ -86,7 +86,7 @@ def create_app(config: dict) -> FastAPI:
     app.state.feed_list_service = FeedListService(FeedListRepository(app.state.db), app.state.feed_list_mirror)
     app.state.reputation_calc_service = ReputationCalcService(
         ReputationCalcRepository(app.state.db),
-        ReputationCalcClient(config["clickhouse"]),
+        ReputationCalcClient(config["clickhouse"], config["geoip"]["country_db_path"]),
     )
 
     app.state.ch_client = ClickHouseClient(
