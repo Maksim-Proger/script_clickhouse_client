@@ -15,7 +15,7 @@ dependencies = [
     "asyncpg",
     "passlib[bcrypt]",
     "bcrypt>=4.0.0,<4.1",
-    "geoip2",
+    "maxminddb",
     "ijson",
 ]
 

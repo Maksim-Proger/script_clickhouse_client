@@ -141,11 +141,11 @@ def prepare_geo(client: CHClient,
     matrix = select_matrix(client, now_utc, rules_version)
     if matrix is None:
         logger.warning("action=geo_matrix_missing message='Scoring without geo bonus'")
-        return dict(NO_MATRIX)
-
-    age_hours = (naive_utc(now_utc) - matrix["computed_at"]).total_seconds() / 3600
-    logger.info("action=geo_matrix_selected matrix_version=%s age_hours=%.1f",
-                matrix["matrix_version"], age_hours)
+        matrix = {**NO_MATRIX, "geo_version": resolver.version}
+    else:
+        age_hours = (naive_utc(now_utc) - matrix["computed_at"]).total_seconds() / 3600
+        logger.info("action=geo_matrix_selected matrix_version=%s age_hours=%.1f",
+                    matrix["matrix_version"], age_hours)
 
     if matrix["geo_version"] == resolver.version:
         added = resolve_missing_ips(client, resolver, where, {**params, "now_utc": now_utc})
