@@ -105,7 +105,9 @@ LIMIT 100000
 """
 
 
-def window_where(days: int = 7, by_source: bool = False, by_profile: bool = False) -> str:
+def window_where(days: int = 7,
+                 by_source: bool = False,
+                 by_profile: bool = False) -> str:
     where = f"blocked_at >= ts_now - INTERVAL {int(days)} DAY AND blocked_at < ts_now"
     if by_source:
         where += " AND source = %(source)s"
@@ -114,7 +116,8 @@ def window_where(days: int = 7, by_source: bool = False, by_profile: bool = Fals
     return where
 
 
-def build_scoring_sql(by_source: bool = False, by_profile: bool = False) -> str:
+def build_scoring_sql(by_source: bool = False,
+                      by_profile: bool = False) -> str:
     return _SCORING_TEMPLATE.format(
         blocked_ips=BLOCKED_IPS_TABLE,
         geo_cache=GEO_CACHE_TABLE,
