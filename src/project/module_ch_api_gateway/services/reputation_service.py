@@ -106,15 +106,15 @@ def _coerce_ints(records: list[dict]) -> list[dict]:
     return records
 
 
-def _has_geo_filter(filters: ReputationFilters) -> bool:
+def _has_asn_filter(filters: ReputationFilters) -> bool:
     return bool(filters.asn)
 
 
 def needs_session(filters: ReputationFilters) -> bool:
-    return _has_geo_filter(filters) or bool(filters.exclude_list_ids)
+    return _has_asn_filter(filters) or bool(filters.exclude_list_ids)
 
 
-def _apply_geo_filter(records: list[dict], filters: ReputationFilters) -> list[dict]:
+def _apply_asn_filter(records: list[dict], filters: ReputationFilters) -> list[dict]:
     if filters.asn:
         asn_set = set(filters.asn)
         if filters.asn_exclude:
@@ -152,7 +152,7 @@ class ReputationService:
             if not enrich:
                 yield raw
                 continue
-            filtered = _apply_geo_filter(await self._enrich(raw), filters)
+            filtered = _apply_asn_filter(await self._enrich(raw), filters)
             if filtered:
                 yield filtered
 
