@@ -9,10 +9,12 @@ class NatsService:
                  infra,
                  dg_subject: str,
                  pa_subject: str,
+                 web_subject: str,
                  pa_timeout: float):
         self.infra = infra
         self.dg_subject = dg_subject
         self.pa_subject = pa_subject
+        self.web_subject = web_subject
         self.pa_timeout = pa_timeout
 
     async def request_data_load(self, params: dict):
@@ -31,7 +33,7 @@ class NatsService:
         elif isinstance(data, list):
             records, source, profile = data, "", ""
         else:
-            await self.infra.publish("data.received", data)
+            await self.infra.publish(self.web_subject, data)
             return
 
         empty_size = len(json.dumps({"source": source, "profile": profile, "records": []}).encode())
@@ -52,6 +54,6 @@ class NatsService:
 
     async def _publish_chunk(self, records: list, source: str, profile: str):
         await self.infra.publish(
-            "data.received",
+            self.web_subject,
             {"source": source, "profile": profile, "records": records},
         )

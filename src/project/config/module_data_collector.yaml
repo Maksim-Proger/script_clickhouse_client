@@ -15,6 +15,9 @@ nats:
     durable: "dg_consumer"
   pa_consumer:
     subject: "dg.pa.request"
+  web_consumer:
+    subject: "data.received"
+    durable: "web_consumer_durable"
 
 parser:
   clickhouse_dt_format: "%Y-%m-%d %H:%M:%S"

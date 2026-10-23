@@ -166,7 +166,8 @@ def get_nats_service(request: Request, config=Depends(get_config)) -> NatsServic
     nats_cfg = config["nats"]
     return NatsService(
         request.app.state.nats_infra,
-        config["nats"]["dg_subject"],
+        dg_subject=nats_cfg["dg_subject"],
         pa_subject=nats_cfg["pa_subject"],
+        web_subject=nats_cfg["web_subject"],
         pa_timeout=float(nats_cfg["pa_timeout_sec"]),
     )

@@ -16,8 +16,8 @@ class NatsWebConsumer:
     def __init__(self, nc: NatsClient, config: dict, lifecycle: Lifecycle):
         self.nc = nc
         self.dt_format = config["parser"]["clickhouse_dt_format"]
-        self.subject = "data.received"
-        self.durable = "web_consumer_durable"
+        self.subject = config["nats"]["web_consumer"]["subject"]
+        self.durable = config["nats"]["web_consumer"]["durable"]
         self.lifecycle = lifecycle
 
     async def handle_msg(self, msg):

@@ -16,6 +16,7 @@ nats:
   url: "nats://localhost:4222"
   dg_subject: "dg.load.command"
   pa_subject: "dg.pa.request"
+  web_subject: "data.received"
   pa_timeout_sec: 320
 
 clickhouse:
