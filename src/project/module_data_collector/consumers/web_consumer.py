@@ -1,7 +1,6 @@
 import asyncio
 import json
 import logging
-
 from nats.aio.client import Client as NatsClient
 
 from project.module_data_collector.dg_manager import _publish_records
@@ -14,12 +13,7 @@ DEFAULT_SOURCE = "web_interface"
 
 
 class NatsWebConsumer:
-    def __init__(
-            self,
-            nc: NatsClient,
-            config: dict,
-            lifecycle: Lifecycle,
-    ):
+    def __init__(self, nc: NatsClient, config: dict, lifecycle: Lifecycle):
         self.nc = nc
         self.dt_format = config["parser"]["clickhouse_dt_format"]
         self.subject = "data.received"

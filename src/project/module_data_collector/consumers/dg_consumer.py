@@ -1,6 +1,6 @@
+import asyncio
 import json
 import logging
-
 from nats.aio.client import Client as NatsClient
 from nats.js.api import ConsumerConfig, AckPolicy
 
@@ -8,6 +8,8 @@ from project.module_data_collector.dg_manager import DgSourceManager
 from project.module_data_collector.lifecycle import Lifecycle
 
 logger = logging.getLogger("data-collector.dg_consumer")
+
+_IN_PROGRESS_INTERVAL = 10
 
 
 class NatsDgConsumer:
@@ -29,16 +31,6 @@ class NatsDgConsumer:
             await msg.nak()
             return
 
-        num_delivered = int(msg.headers.get("Nats-Num-Delivered", 1)) if msg.headers else 1
-
-        if num_delivered >= 3:
-            logger.error(
-                "action=msg_max_retries_exceeded subject=%s payload=%s",
-                self.subject, msg.data.decode()
-            )
-            await msg.ack()
-            return
-
         try:
             payload = json.loads(msg.data.decode())
             action = payload.get("action")
@@ -46,12 +38,22 @@ class NatsDgConsumer:
             logger.info("action=msg_received subject=%s command=%s", self.subject, action)
 
             if action == "load":
-                await self.dg_manager.run_manual(payload)
+                heartbeat = asyncio.create_task(self._keep_alive(msg))
+                try:
+                    await self.dg_manager.run_manual(payload)
+                finally:
+                    heartbeat.cancel()
 
             await msg.ack()
         except Exception as e:
             logger.error("action=consumer_error subject=%s error=%s", self.subject, str(e))
             await msg.nak()
+
+    @staticmethod
+    async def _keep_alive(msg) -> None:
+        while True:
+            await asyncio.sleep(_IN_PROGRESS_INTERVAL)
+            await msg.in_progress()
 
     async def start(self) -> None:
         js = self.nc.jetstream()
