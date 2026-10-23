@@ -1,33 +1,16 @@
 import asyncio
-import json
 import logging
 from datetime import datetime, timezone
 
 from project.module_data_collector.http.src2_client import DgClient
 from project.module_data_collector.lifecycle import Lifecycle
 from project.module_data_collector.parser.parser import stream_extract_records, _is_in_period
+from project.module_data_collector.publisher import PUBLISH_BATCH_SIZE, publish_records
 from project.utils.http.async_client import HttpxAsyncReader
 
 logger = logging.getLogger("data-collector.dg_manager")
 
-_PUBLISH_BATCH_SIZE = 500
 _PA_REPLY_LIMIT = 1_000_000
-
-
-async def _publish_records(nc,
-                           records: list,
-                           lifecycle: Lifecycle,
-                           subject: str = "ch.write.raw") -> None:
-    batch = []
-    for record in records:
-        if lifecycle.is_shutting_down:
-            break
-        batch.append(nc.publish(subject, json.dumps(record).encode()))
-        if len(batch) >= _PUBLISH_BATCH_SIZE:
-            await asyncio.gather(*batch)
-            batch.clear()
-    if batch:
-        await asyncio.gather(*batch)
 
 
 def _parse_period_to_unix(period: dict) -> dict:
@@ -46,29 +29,29 @@ def _parse_period_to_unix(period: dict) -> dict:
 
 
 class DgSourceManager:
-    def __init__(self,
-                 nc,
-                 config: dict,
-                 lifecycle: Lifecycle):
+    def __init__(self, nc, config: dict, lifecycle: Lifecycle):
         self.nc = nc
         self.lifecycle = lifecycle
 
         self.defaults = config.get("dg_defaults", {})
         self.sources = {src["name"]: src for src in config.get("dg_sources", [])}
-        self.dt_format = config.get("parser", {}).get("clickhouse_dt_format", "%Y-%m-%dT%H:%M:%S")
-        self.max_period_days = config.get("pa_request", {}).get("max_period_days", 7)
+        self.dt_format = config["parser"]["clickhouse_dt_format"]
+        self.max_period_days = config["pa_request"]["max_period_days"]
+        self.raw_subject = config["nats"]["raw_subject"]
+        self._workers: list[asyncio.Task] = []
 
         dg_timeout = self.defaults.get("timeout", 10)
         self.client = DgClient(timeout=dg_timeout, verify_ssl=self.defaults.get("verify_ssl", False))
 
     async def _stream_and_process(self,
                                   name: str,
-                                  url: str,
-                                  headers: dict,
-                                  payload: dict,
+                                  data: dict,
                                   filter_expired: bool = True,
                                   period: dict | None = None,
-                                  on_record=None) -> dict:
+                                  on_record=None) -> None:
+        url = self.defaults.get("url", "")
+        headers = self.defaults.get("headers", {})
+        payload = {"action": self.defaults.get("action", "list"), "name": name, "data": data}
 
         last_error = None
         response_cm = None
@@ -122,18 +105,18 @@ class DgSourceManager:
                     break
 
                 records_found += 1
-                batch.append(self.nc.publish("ch.write.raw", json.dumps(record).encode()))
+                batch.append(record)
 
                 if on_record is not None:
                     on_record(record)
 
-                if len(batch) >= _PUBLISH_BATCH_SIZE:
-                    await asyncio.gather(*batch)
+                if len(batch) >= PUBLISH_BATCH_SIZE:
+                    await publish_records(self.nc, self.raw_subject, batch, self.lifecycle)
                     batch.clear()
                     batches_sent += 1
 
             if batch:
-                await asyncio.gather(*batch)
+                await publish_records(self.nc, self.raw_subject, batch, self.lifecycle)
                 batches_sent += 1
         finally:
             await response_cm.__aexit__(None, None, None)
@@ -152,33 +135,25 @@ class DgSourceManager:
             name, content_length, objects_read, records_found, batches_sent,
         )
 
-        return {
-            "content_length": content_length,
-            "objects_read": objects_read,
-            "records_found": records_found,
-            "batches_sent": batches_sent,
-        }
+    def _clamp_period(self, period: dict, profile: str) -> dict:
+        period_to = int(period["to"])
+        period_from = int(period["from"])
+        min_from = period_to - int(self.max_period_days * 86400)
+        if period_from >= min_from:
+            return period
+        logger.info(
+            "action=period_clamped profile=%s original_from=%d clamped_from=%d",
+            profile, period_from, min_from,
+        )
+        return {"from": min_from, "to": period_to}
 
     async def run_automated(self, name: str):
         cfg = self.sources.get(name)
         if not cfg:
             return
-
-        final_payload = {
-            "action": self.defaults.get("action", "list"),
-            "name": name,
-            "data": cfg.get("payload_data", {})
-        }
-
-        await self._stream_and_process(
-            name=name,
-            url=self.defaults.get("url", ""),
-            headers=self.defaults.get("headers", {}),
-            payload=final_payload,
-        )
+        await self._stream_and_process(name=name, data=cfg.get("payload_data", {}))
 
     async def run_manual(self, payload_from_front: dict):
-
         ui_params = payload_from_front.get("params", {})
 
         profile_name = ui_params.get("name", "manual-request")
@@ -186,27 +161,11 @@ class DgSourceManager:
         filter_expired = ui_params.get("filter_expired", False)
 
         period = front_data_filters.pop("period", None)
-
         if period:
-            max_seconds = int(self.max_period_days * 86400)
-            period_to = int(period["to"])
-            period_from = int(period["from"])
-            min_from = period_to - max_seconds
-            if period_from < min_from:
-                logger.info(
-                    "action=period_clamped profile=%s original_from=%d clamped_from=%d",
-                    profile_name, period_from, min_from
-                )
-                period = {"from": min_from, "to": period_to}
+            period = self._clamp_period(period, profile_name)
 
         front_data_filters["type"] = self.defaults.get("type", "shost")
         front_data_filters["value"] = self.defaults.get("value", "1")
-
-        final_payload = {
-            "action": self.defaults.get("action", "list"),
-            "name": profile_name,
-            "data": front_data_filters
-        }
 
         logger.info(
             "action=manual_request_start profile=%s data_keys=%s filter_expired=%s period=%s",
@@ -218,39 +177,19 @@ class DgSourceManager:
 
         await self._stream_and_process(
             name=profile_name,
-            url=self.defaults.get("url", ""),
-            headers=self.defaults.get("headers", {}),
-            payload=final_payload,
+            data=front_data_filters,
             filter_expired=filter_expired,
             period=period,
         )
 
     async def run_pa(self, payload_from_simple: dict) -> list[dict]:
-        profile_name = payload_from_simple.get("params", {}).get("name", "unknown")
-        period = payload_from_simple.get("params", {}).get("period", None)
-        ip = payload_from_simple.get("params", {}).get("ip", None)
+        params = payload_from_simple.get("params", {})
+        profile_name = params.get("name", "unknown")
+        period = params.get("period")
+        ip = params.get("ip")
 
         if period:
-            period = _parse_period_to_unix(period)
-            max_seconds = int(self.max_period_days * 86400)
-            period_to = int(period["to"])
-            period_from = int(period["from"])
-            min_from = period_to - max_seconds
-            if period_from < min_from:
-                logger.info(
-                    "action=period_clamped profile=%s original_from=%d clamped_from=%d",
-                    profile_name, period_from, min_from
-                )
-                period = {"from": min_from, "to": period_to}
-
-        final_payload = {
-            "action": self.defaults.get("action", "list"),
-            "name": profile_name,
-            "data": {
-                "id": "2-255",
-                "type": self.defaults.get("type", "shost"),
-            },
-        }
+            period = self._clamp_period(_parse_period_to_unix(period), profile_name)
 
         logger.info(
             "action=pa_request_start profile=%s period=%s ip=%s",
@@ -286,21 +225,16 @@ class DgSourceManager:
                 "profile": record["profile"],
             }
 
-        stats = await self._stream_and_process(
+        await self._stream_and_process(
             name=profile_name,
-            url=self.defaults.get("url", ""),
-            headers=self.defaults.get("headers", {}),
-            payload=final_payload,
+            data={"id": "2-255", "type": self.defaults.get("type", "shost")},
             filter_expired=False,
-            period=None,
             on_record=_on_record,
         )
 
         logger.info(
-            "action=pa_request_done profile=%s content_length=%s objects_read=%d records_found=%d "
-            "reply_count=%d capped=%s",
-            profile_name, stats["content_length"], stats["objects_read"], stats["records_found"],
-            len(dedup), capped,
+            "action=pa_request_done profile=%s reply_count=%d capped=%s",
+            profile_name, len(dedup), capped,
         )
 
         return list(dedup.values())
@@ -319,8 +253,10 @@ class DgSourceManager:
             interval = cfg.get("schedule", 0)
             if interval > 0:
                 logger.info("action=worker_init profile=%s interval=%ds", name, interval)
-                asyncio.create_task(self._worker_loop(name, interval))
+                self._workers.append(asyncio.create_task(self._worker_loop(name, interval)))
 
     async def stop(self):
+        for task in self._workers:
+            task.cancel()
         await self.client.close()
         logger.info("action=dg_manager_stopped")

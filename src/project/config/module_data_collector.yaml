@@ -10,6 +10,7 @@ targeted_ab_client:
 
 nats:
   url: "nats://localhost:4222"
+  raw_subject: "ch.write.raw"
   dg_consumer:
     subject: "dg.load.command"
     durable: "dg_consumer"

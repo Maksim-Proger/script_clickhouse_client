@@ -1,10 +1,10 @@
 import asyncio
 import logging
 
-from project.module_data_collector.dg_manager import _publish_records
 from project.module_data_collector.http.src1_client import AbClient
 from project.module_data_collector.lifecycle import Lifecycle
 from project.module_data_collector.parser.parser import parse_targeted_pairs
+from project.module_data_collector.publisher import publish_records
 
 logger = logging.getLogger("data-collector.targeted_ab_producer")
 
@@ -18,6 +18,7 @@ class TargetedAbProducer:
         self.interval = cfg.get("interval", 60.0)
         self.timeout = cfg.get("timeout", 10)
         self.dt_format = config["parser"]["clickhouse_dt_format"]
+        self.raw_subject = config["nats"]["raw_subject"]
         self.lifecycle = lifecycle
 
         self.client = AbClient(self.url, timeout=self.timeout)
@@ -49,7 +50,7 @@ class TargetedAbProducer:
                         )
 
                     if records:
-                        await _publish_records(self.nc, records, self.lifecycle)
+                        await publish_records(self.nc, self.raw_subject, records, self.lifecycle)
 
                     logger.info(
                         "action=targeted_ipban_poll_done lines=%d records=%d skipped=%d empty=%d",

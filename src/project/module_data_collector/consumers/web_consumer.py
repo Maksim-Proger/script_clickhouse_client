@@ -3,9 +3,9 @@ import json
 import logging
 from nats.aio.client import Client as NatsClient
 
-from project.module_data_collector.dg_manager import _publish_records
 from project.module_data_collector.lifecycle import Lifecycle
 from project.module_data_collector.parser.parser import build_manual_records
+from project.module_data_collector.publisher import publish_records
 
 logger = logging.getLogger("data-collector.web_consumer")
 
@@ -18,6 +18,7 @@ class NatsWebConsumer:
         self.dt_format = config["parser"]["clickhouse_dt_format"]
         self.subject = config["nats"]["web_consumer"]["subject"]
         self.durable = config["nats"]["web_consumer"]["durable"]
+        self.raw_subject = config["nats"]["raw_subject"]
         self.lifecycle = lifecycle
 
     async def handle_msg(self, msg):
@@ -60,7 +61,7 @@ class NatsWebConsumer:
             )
 
             if records:
-                await _publish_records(self.nc, records, self.lifecycle)
+                await publish_records(self.nc, self.raw_subject, records, self.lifecycle)
 
             await msg.ack()
 
