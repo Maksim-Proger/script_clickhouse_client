@@ -2,7 +2,7 @@ import asyncio
 import logging
 
 from project.module_reputation.infrastructure.ch_client import ReputationCHClient
-from project.module_reputation.lifecycle import Lifecycle
+from project.utils.lifecycle import Lifecycle
 
 logger = logging.getLogger("reputation.job")
 

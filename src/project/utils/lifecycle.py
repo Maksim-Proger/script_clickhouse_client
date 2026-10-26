@@ -2,11 +2,10 @@ import asyncio
 import logging
 import signal
 
-logger = logging.getLogger("reputation.lifecycle")
-
 
 class Lifecycle:
-    def __init__(self):
+    def __init__(self, name: str):
+        self.logger = logging.getLogger(f"{name}.lifecycle")
         self.shutdown_event = asyncio.Event()
         self.is_shutting_down = False
 
@@ -16,7 +15,7 @@ class Lifecycle:
             loop.add_signal_handler(sig, self._on_signal)
 
     def _on_signal(self) -> None:
-        logger.info("action=signal_received status=shutting_down")
+        self.logger.info("action=signal_received status=shutting_down")
         asyncio.create_task(self.shutdown())
 
     async def shutdown(self) -> None:

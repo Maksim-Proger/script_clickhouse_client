@@ -2,11 +2,10 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 
-from project.module_data_collector.http.src2_client import DgClient
-from project.module_data_collector.lifecycle import Lifecycle
+from project.utils.lifecycle import Lifecycle
 from project.module_data_collector.parser.parser import stream_extract_records, _is_in_period
 from project.module_data_collector.publisher import PUBLISH_BATCH_SIZE, publish_records
-from project.utils.http.async_client import HttpxAsyncReader
+from project.utils.http.async_client import BaseAsyncHttpClient, HttpxAsyncReader
 
 logger = logging.getLogger("data-collector.dg_manager")
 
@@ -40,8 +39,10 @@ class DgSourceManager:
         self.raw_subject = config["nats"]["raw_subject"]
         self._workers: list[asyncio.Task] = []
 
-        dg_timeout = self.defaults.get("timeout", 10)
-        self.client = DgClient(timeout=dg_timeout, verify_ssl=self.defaults.get("verify_ssl", False))
+        self.client = BaseAsyncHttpClient(
+            timeout=self.defaults.get("timeout", 10),
+            verify_ssl=self.defaults.get("verify_ssl", False),
+        )
 
     async def _stream_and_process(self,
                                   name: str,
@@ -60,7 +61,7 @@ class DgSourceManager:
         for attempt in range(1, 4):
             try:
                 logger.info("action=execute_request profile=%s attempt=%d", name, attempt)
-                response_cm = self.client.stream_fetch_data(url, headers, payload)
+                response_cm = self.client.post_stream(url, headers=headers, data=payload)
                 response = await response_cm.__aenter__()
                 response.raise_for_status()
                 break

@@ -2,7 +2,7 @@ import asyncio
 
 from project.module_reputation.core.reputation_job import ReputationJob
 from project.module_reputation.infrastructure.ch_client import ReputationCHClient
-from project.module_reputation.lifecycle import Lifecycle
+from project.utils.lifecycle import Lifecycle
 from project.utils.logging_formatter import setup_logging
 
 
@@ -11,7 +11,7 @@ def main(config: dict) -> None:
     logger.info("action=process_start status=initializing")
 
     async def run() -> None:
-        lifecycle = Lifecycle()
+        lifecycle = Lifecycle("reputation")
         lifecycle.install_signal_handlers()
 
         client = ReputationCHClient(config["clickhouse"], config["geo"])

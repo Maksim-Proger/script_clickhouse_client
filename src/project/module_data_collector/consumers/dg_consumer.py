@@ -5,7 +5,7 @@ from nats.aio.client import Client as NatsClient
 from nats.js.api import ConsumerConfig, AckPolicy
 
 from project.module_data_collector.dg_manager import DgSourceManager
-from project.module_data_collector.lifecycle import Lifecycle
+from project.utils.lifecycle import Lifecycle
 
 logger = logging.getLogger("data-collector.dg_consumer")
 
@@ -67,5 +67,3 @@ class NatsDgConsumer:
                 max_deliver=3,
             )
         )
-
-        await self.lifecycle.shutdown_event.wait()

@@ -1,7 +1,7 @@
 import asyncio
 import json
 
-from project.module_data_collector.lifecycle import Lifecycle
+from project.utils.lifecycle import Lifecycle
 
 PUBLISH_BATCH_SIZE = 500
 

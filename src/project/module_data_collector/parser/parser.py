@@ -76,10 +76,9 @@ async def stream_extract_records(
         dt_format: str,
         filter_expired: bool = True,
         period: dict | None = None,
-        _now: int | None = None,
         stats: dict | None = None,
 ) -> AsyncIterator[dict]:
-    now = _now if _now is not None else int(datetime.now(timezone.utc).timestamp())
+    now = int(datetime.now(timezone.utc).timestamp())
 
     async for mark in ijson.items_async(reader, "marks.item"):
         if stats is not None:
@@ -101,14 +100,7 @@ def _parse_datetime(value: Any, dt_format: str) -> str:
     return datetime.now(timezone.utc).strftime(dt_format)
 
 
-def parse_input(
-        data: str,
-        source: str,
-        profile: str = "",
-        dt_format: str = "%Y-%m-%dT%H:%M:%S",
-        filter_expired: bool = True,
-        period: dict | None = None,
-) -> List[dict]:
+def parse_input(data: str, source: str, dt_format: str) -> List[dict]:
     if not data or not data.strip():
         return []
 
@@ -117,7 +109,7 @@ def parse_input(
     records: List[dict] = []
     try:
         parsed = json.loads(data)
-        _extract_records(parsed, records, source, profile, dt_format, filter_expired, period, now)
+        _extract_records(parsed, records, source, "", dt_format, _now=now)
     except Exception:
         now_str = datetime.now(timezone.utc).strftime(dt_format)
         for ip in IP_REGEX.findall(data):
@@ -125,7 +117,7 @@ def parse_input(
                 "ip_address": ip,
                 "blocked_at": now_str,
                 "source": source,
-                "profile": profile
+                "profile": ""
             })
     return records
 
@@ -133,8 +125,8 @@ def parse_input(
 def build_manual_records(
         items: List[dict],
         source: str,
-        profile: str = "",
-        dt_format: str = "%Y-%m-%dT%H:%M:%S",
+        profile: str,
+        dt_format: str,
 ) -> List[dict]:
     now_str = datetime.now(timezone.utc).strftime(dt_format)
 
@@ -175,7 +167,7 @@ def _skip_line(stats: dict, row: str) -> None:
 def parse_targeted_pairs(
         data: str,
         source: str,
-        dt_format: str = "%Y-%m-%dT%H:%M:%S",
+        dt_format: str,
 ) -> tuple[List[dict], dict]:
     stats = {"lines": 0, "records": 0, "skipped": 0, "empty": 0, "samples": []}
 

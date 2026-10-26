@@ -3,7 +3,7 @@ import json
 import logging
 from nats.aio.client import Client as NatsClient
 
-from project.module_data_collector.lifecycle import Lifecycle
+from project.utils.lifecycle import Lifecycle
 from project.module_data_collector.parser.parser import build_manual_records
 from project.module_data_collector.publisher import publish_records
 
@@ -49,16 +49,7 @@ class NatsWebConsumer:
                 await msg.term()
                 return
 
-            loop = asyncio.get_running_loop()
-            records = await loop.run_in_executor(
-                None,
-                lambda: build_manual_records(
-                    items=items,
-                    source=source,
-                    profile=profile,
-                    dt_format=self.dt_format,
-                )
-            )
+            records = await asyncio.to_thread(build_manual_records, items, source, profile, self.dt_format)
 
             if records:
                 await publish_records(self.nc, self.raw_subject, records, self.lifecycle)
@@ -76,4 +67,3 @@ class NatsWebConsumer:
             durable=self.durable,
             cb=self.handle_msg
         )
-        await self.lifecycle.shutdown_event.wait()

@@ -1,8 +1,8 @@
 import asyncio
 import logging
 
-from project.module_data_collector.http.src1_client import AbClient
-from project.module_data_collector.lifecycle import Lifecycle
+from project.utils.http.async_client import BaseAsyncHttpClient
+from project.utils.lifecycle import Lifecycle
 from project.module_data_collector.parser.parser import parse_targeted_pairs
 from project.module_data_collector.publisher import publish_records
 
@@ -16,12 +16,11 @@ class TargetedAbProducer:
         self.nc = nc
         self.url = cfg["url"]
         self.interval = cfg.get("interval", 60.0)
-        self.timeout = cfg.get("timeout", 10)
         self.dt_format = config["parser"]["clickhouse_dt_format"]
         self.raw_subject = config["nats"]["raw_subject"]
         self.lifecycle = lifecycle
 
-        self.client = AbClient(self.url, timeout=self.timeout)
+        self.client = BaseAsyncHttpClient(timeout=cfg.get("timeout", 10))
 
     async def start(self) -> None:
         await self.client.connect()
@@ -31,17 +30,8 @@ class TargetedAbProducer:
         try:
             while not self.lifecycle.is_shutting_down:
                 try:
-                    raw_data = await self.client.get_data()
-
-                    loop = asyncio.get_running_loop()
-                    records, stats = await loop.run_in_executor(
-                        None,
-                        lambda: parse_targeted_pairs(
-                            raw_data,
-                            source="ipban",
-                            dt_format=self.dt_format,
-                        )
-                    )
+                    raw_data = await self.client.get(self.url)
+                    records, stats = await asyncio.to_thread(parse_targeted_pairs, raw_data, "ipban", self.dt_format)
 
                     if stats["skipped"]:
                         logger.warning(

@@ -1,12 +1,15 @@
 import json
 import logging
+from nats.aio.client import Client as NatsClient
+
+from project.module_data_collector.dg_manager import DgSourceManager
+from project.utils.lifecycle import Lifecycle
 
 logger = logging.getLogger("data-collector.pa_consumer")
 
 
 class NatsPaConsumer:
-
-    def __init__(self, nc, config: dict, lifecycle, dg_manager):
+    def __init__(self, nc: NatsClient, config: dict, lifecycle: Lifecycle, dg_manager: DgSourceManager):
         self.nc = nc
         self.dg_manager = dg_manager
         self.subject = config["nats"]["pa_consumer"]["subject"]
@@ -45,4 +48,3 @@ class NatsPaConsumer:
     async def start(self) -> None:
         await self.nc.subscribe(self.subject, cb=self.handle_msg)
         logger.info("action=pa_consumer_init subject=%s", self.subject)
-        await self.lifecycle.shutdown_event.wait()
