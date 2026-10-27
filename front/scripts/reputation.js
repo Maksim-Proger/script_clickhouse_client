@@ -494,6 +494,7 @@ btnRepRecalc.addEventListener("click", async () => {
         const response = await Auth.authFetch(RECALC_URL, {method: "POST"});
         const result = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(errorText(result.detail, response.status));
+        recalcSpinner.classList.remove("is-hidden");
         alert(result.status === "started" ? "Расчёт запущен" : "Расчёт уже обновляется");
         checkRecalcStatus();
     } catch (e) {
