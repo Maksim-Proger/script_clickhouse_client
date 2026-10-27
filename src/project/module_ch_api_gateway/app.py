@@ -28,6 +28,8 @@ from project.module_ch_api_gateway.infrastructure.clickhouse_stream_client impor
 from project.module_ch_api_gateway.infrastructure.reputation_calc_client import ReputationCalcClient
 from project.module_ch_api_gateway.infrastructure.reputation_calc_repo import ReputationCalcRepository
 from project.module_ch_api_gateway.services.reputation_calc_service import ReputationCalcService
+from project.module_ch_api_gateway.services.reputation_service import ReputationService
+from project.module_ch_api_gateway.services.auto_list_service import AutoListService, auto_lists_loop
 
 logger = logging.getLogger("ch-api-gateway")
 
@@ -55,12 +57,14 @@ def create_app(config: dict) -> FastAPI:
         cleanup_task = asyncio.create_task(rate_limit_cleanup_loop(app.state))
         search_cleanup_task = asyncio.create_task(search_cleanup_loop(app.state.feed_list_service.repo))
         mirror_sync_task = asyncio.create_task(mirror_sync_loop(app.state.feed_list_service))
+        auto_lists_task = asyncio.create_task(auto_lists_loop(app.state.auto_list_service))
         try:
             yield
         finally:
             cleanup_task.cancel()
             search_cleanup_task.cancel()
             mirror_sync_task.cancel()
+            auto_lists_task.cancel()
             app.state.user_service.stop_cleanup_loop()
             await app.state.nats_infra.close()
             logger.info("action=nats_disconnect status=success")
@@ -110,6 +114,12 @@ def create_app(config: dict) -> FastAPI:
         asn_db_path=config["geoip"]["asn_db_path"],
     )
     app.state.geoip_client.open()
+
+    app.state.auto_list_service = AutoListService(
+        app.state.feed_list_service,
+        ReputationService(app.state.ch_client, app.state.geoip_client, app.state.ch_stream_client),
+        config.get("auto_lists", {}),
+    )
 
     app.state.nats_infra = NatsInfrastructure(url=config["nats"]["url"])
 

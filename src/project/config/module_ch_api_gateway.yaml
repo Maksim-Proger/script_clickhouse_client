@@ -45,3 +45,12 @@ geoip:
   country_db_path: "/opt/geoip/RU-GeoIP-Country.mmdb"
   asn_db_path:     "/opt/geoip/RU-GeoIP-ASN.mmdb"
 
+auto_lists:
+  names:
+    all: "all"
+    not_ru: "not-ru"
+    not_cis: "not-cis"
+  min_score: 50
+  cis_countries: [ "RU", "BY", "AM", "KZ", "GE", "AZ", "KG", "UZ", "TJ", "MD" ]
+  created_by: "system:auto-lists"
+  interval_sec: 60

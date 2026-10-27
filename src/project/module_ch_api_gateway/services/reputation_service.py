@@ -36,6 +36,12 @@ _SELECT_COLS = (
 )
 
 _COUNTRY_RE = re.compile(r"^[A-Z]{2}$")
+_RUN_ID_RE = re.compile(r"^iprep_\d+$")
+
+_LATEST_SNAPSHOT_QUERY = (
+    "SELECT run_id, computed_at FROM feedgen.ip_reputation_snapshots "
+    "ORDER BY computed_at DESC, run_id DESC LIMIT 1"
+)
 
 _INT_FIELDS = (
     "events_count", "max_5m_events", "max_hour_events",
@@ -62,9 +68,15 @@ def check_country_codes(filters: ReputationFilters) -> list[str]:
     return codes
 
 
-def _build_where(filters: ReputationFilters, exclude_lists: Optional[list[dict]] = None) -> str:
+def _build_where(filters: ReputationFilters,
+                 exclude_lists: Optional[list[dict]] = None,
+                 run_id: Optional[str] = None) -> str:
     if filters.calc_id is not None:
         conditions = [f"calc_id = {int(filters.calc_id)}"]
+    elif run_id is not None:
+        if not _RUN_ID_RE.match(run_id):
+            raise ValueError(f"Некорректный идентификатор снимка: {run_id}")
+        conditions = [f"run_id = '{run_id}'"]
     else:
         conditions = [_LATEST_SNAPSHOT_PREDICATE]
 
@@ -142,10 +154,11 @@ class ReputationService:
                                  filters: ReputationFilters,
                                  chunk_size: int,
                                  enrich: bool = True,
-                                 exclude_lists: Optional[list[dict]] = None):
+                                 exclude_lists: Optional[list[dict]] = None,
+                                 run_id: Optional[str] = None):
         query = (
             f"SELECT {_SELECT_COLS} FROM {_table(filters)} "
-            f"{_build_where(filters, exclude_lists)} ORDER BY score DESC, ip_address"
+            f"{_build_where(filters, exclude_lists, run_id)} ORDER BY score DESC, ip_address"
         )
         async for chunk in self.stream_client.iter_rows(query, chunk_size):
             raw = _coerce_ints(chunk)
@@ -156,9 +169,16 @@ class ReputationService:
             if filtered:
                 yield filtered
 
-    async def count_snapshot(self, filters: ReputationFilters) -> int:
+    async def latest_snapshot(self) -> Optional[dict]:
+        res = await self.ch_client.fetch_json(_LATEST_SNAPSHOT_QUERY)
+        rows = res.get("data", [])
+        return rows[0] if rows else None
+
+    async def count_snapshot(self, filters: ReputationFilters, run_id: Optional[str] = None) -> int:
         try:
-            res = await self.ch_client.fetch_json(_build_count_query(_table(filters), _build_where(filters)))
+            res = await self.ch_client.fetch_json(
+                _build_count_query(_table(filters), _build_where(filters, run_id=run_id))
+            )
             return int(res["data"][0]["total"])
         except ValueError:
             raise

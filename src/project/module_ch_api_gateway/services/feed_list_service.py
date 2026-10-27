@@ -521,6 +521,33 @@ class FeedListService:
         )
         return self.serialize_list(await self.repo.get_catalog_row(list_id))
 
+    async def start_auto_version(self,
+                                 list_id: Optional[int],
+                                 name: str,
+                                 created_by: str,
+                                 source_filters: dict,
+                                 snapshot_run_id: str,
+                                 snapshot_computed_at: datetime,
+                                 min_score: float,
+                                 builder) -> tuple[int, int]:
+        async with self.repo.db.pool.acquire() as conn:
+            async with conn.transaction():
+                if list_id is None:
+                    row = await self.repo.create_list(
+                        conn, name, "", created_by, "reputation", is_system=True,
+                    )
+                    list_id, version = row["id"], 1
+                else:
+                    version = await self.repo.next_version_number(conn, list_id)
+                await self.repo.create_version(
+                    conn, list_id, version, "building", "auto",
+                    json.dumps(source_filters, ensure_ascii=False, default=str), created_by,
+                    snapshot_run_id, snapshot_computed_at, min_score,
+                )
+
+        self._run_build(list_id, version, lambda: builder(list_id, version))
+        return list_id, version
+
     async def build_from_ch(self,
                             list_id: int,
                             version: int,
@@ -550,9 +577,10 @@ class FeedListService:
                                              reputation_service,
                                              filters,
                                              exclude_lists: Optional[list[dict]] = None,
-                                             merge: bool = False) -> None:
+                                             merge: bool = False,
+                                             run_id: Optional[str] = None) -> None:
         async for rows in reputation_service.iter_snapshot_rows(
-                filters, CHUNK_SIZE, exclude_lists=exclude_lists):
+                filters, CHUNK_SIZE, exclude_lists=exclude_lists, run_id=run_id):
             await self.build_from_reputation_rows(list_id, version, rows, merge=merge)
 
     async def build_search(self,
