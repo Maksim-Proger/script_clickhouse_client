@@ -918,6 +918,11 @@ tr.clickable.expanded td:first-child::before {
     color: var(--color-danger);
 }
 
+.feed-system {
+    font-size: 12px;
+    color: var(--color-text-faint);
+}
+
 .feed-history {
     margin: 4px 0 12px 44px;
     padding: 10px 14px;

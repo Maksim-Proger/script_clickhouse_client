@@ -21,7 +21,7 @@ _ITEM_SELECT = (
 _CATALOG_SELECT = """
     SELECT l.id, l.name, l.description, l.created_by, l.created_at, l.updated_at,
            l.status, l.source_type, l.current_version, l.last_error,
-           l.calc_source, l.calc_profile,
+           l.calc_source, l.calc_profile, l.is_system,
            coalesce(cur.item_count, 0) AS item_count,
            cur.source_filters,
            EXISTS (SELECT 1 FROM feed_list_versions h
@@ -51,14 +51,15 @@ class FeedListRepository:
                           created_by: str,
                           source_type: str,
                           calc_source: Optional[str] = None,
-                          calc_profile: Optional[str] = None) -> asyncpg.Record:
+                          calc_profile: Optional[str] = None,
+                          is_system: bool = False) -> asyncpg.Record:
         return await conn.fetchrow(
             """
-            INSERT INTO feed_lists (name, description, created_by, source_type, calc_source, calc_profile)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO feed_lists (name, description, created_by, source_type, calc_source, calc_profile, is_system)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING *
             """,
-            name, description, created_by, source_type, calc_source, calc_profile,
+            name, description, created_by, source_type, calc_source, calc_profile, is_system,
         )
 
     async def insert_items(self, list_id: int, version: int, items: list[tuple]) -> None:
@@ -276,16 +277,28 @@ class FeedListRepository:
                              status: str,
                              build_kind: str,
                              source_filters: str,
-                             created_by: str) -> asyncpg.Record:
+                             created_by: str,
+                             snapshot_run_id: Optional[str] = None,
+                             snapshot_computed_at: Optional[datetime] = None,
+                             min_score: Optional[float] = None) -> asyncpg.Record:
         return await conn.fetchrow(
             """
             INSERT INTO feed_list_versions
-                (list_id, version, status, build_kind, source_filters, created_by)
-            VALUES ($1, $2, $3, $4, $5::jsonb, $6)
+                (list_id, version, status, build_kind, source_filters, created_by,
+                 snapshot_run_id, snapshot_computed_at, min_score)
+            VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9)
             RETURNING *
             """,
             list_id, version, status, build_kind, source_filters, created_by,
+            snapshot_run_id, snapshot_computed_at, min_score,
         )
+
+    async def get_setting(self, key: str) -> Optional[str]:
+        async with self.db.pool.acquire() as conn:
+            try:
+                return await conn.fetchval("SELECT value FROM settings WHERE key = $1", key)
+            except asyncpg.UndefinedTableError:
+                return None
 
     async def next_version_number(self, conn, list_id: int) -> int:
         await conn.execute("SELECT id FROM feed_lists WHERE id = $1 FOR UPDATE", list_id)

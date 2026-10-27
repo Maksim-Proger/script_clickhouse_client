@@ -55,6 +55,7 @@ const BUILD_KIND_LABELS = {
     create: "создание",
     append: "дополнение",
     restore: "восстановление",
+    auto: "автообновление",
 };
 
 const SOURCE_LABELS = {
@@ -152,7 +153,7 @@ function renderTable(lists) {
         html += `<tr>
             <td>${toggle}</td>
             <td>${l.id}</td>
-            <td>${escapeHtml(l.name)}</td>
+            <td>${escapeHtml(l.name)}${l.is_system ? `<div class="feed-system">системный</div>` : ""}</td>
             <td title="${escapeHtml(l.description)}">${escapeHtml(truncate(l.description, 60))}</td>
             <td>${renderSource(l)}</td>
             <td>${renderBadge(l)}</td>
@@ -189,7 +190,7 @@ function renderActions(l) {
     const lock = l.busy ? "disabled" : "";
 
     if (!l.current_version) {
-        return l.busy
+        return l.busy || l.is_system
             ? ""
             : `<button class="btn btn--danger btn--small" onclick="window.deleteList(${l.id})">Удалить</button>`;
     }
@@ -207,6 +208,12 @@ function renderActions(l) {
     const changeAction = l.status === "active"
         ? `<button class="btn btn--secondary btn--small" onclick="window.openAppendDialog(${l.id})" ${lock}>Изменить</button>`
         : "";
+
+    if (l.is_system) {
+        return `
+        <button class="btn btn--secondary btn--small" onclick="window.openListItems(${l.id})">Элементы</button>
+        ${exportActions}`;
+    }
 
     return `
         <button class="btn btn--secondary btn--small" onclick="window.openListItems(${l.id})">Элементы</button>
@@ -239,7 +246,7 @@ function renderHistory(listId) {
         <td>${v.item_count}</td>
         <td>${escapeHtml(v.created_by)}</td>
         <td>${BUILD_KIND_LABELS[v.build_kind] || escapeHtml(v.build_kind)}</td>
-        <td><button class="btn btn--secondary btn--small" onclick="window.restoreVersion(${listId}, ${v.version})" ${lock}>Восстановить</button></td>
+        <td>${list?.is_system ? "" : `<button class="btn btn--secondary btn--small" onclick="window.restoreVersion(${listId}, ${v.version})" ${lock}>Восстановить</button>`}</td>
     </tr>`).join("");
 
     cell.innerHTML = `<div class="feed-history"><table><thead><tr>

@@ -201,6 +201,13 @@ UPGRADE_REPUTATION_LINKS = [
     """,
 ]
 
+UPGRADE_AUTO_LISTS = [
+    "ALTER TABLE feed_lists ADD COLUMN IF NOT EXISTS is_system BOOLEAN NOT NULL DEFAULT FALSE",
+    "ALTER TABLE feed_list_versions ADD COLUMN IF NOT EXISTS snapshot_run_id VARCHAR(64)",
+    "ALTER TABLE feed_list_versions ADD COLUMN IF NOT EXISTS snapshot_computed_at TIMESTAMP",
+    "ALTER TABLE feed_list_versions ADD COLUMN IF NOT EXISTS min_score DOUBLE PRECISION",
+]
+
 UPGRADE_SEARCH_TABLES = [
     "ALTER TABLE search_sessions SET UNLOGGED",
     "ALTER TABLE search_session_rows SET UNLOGGED",
@@ -375,6 +382,8 @@ class DatabaseManager:
             await conn.execute(CREATE_REPUTATION_CALCS_USER_INDEX)
             await conn.execute(CREATE_REPUTATION_CALCS_TARGET_INDEX)
             for statement in UPGRADE_REPUTATION_LINKS:
+                await conn.execute(statement)
+            for statement in UPGRADE_AUTO_LISTS:
                 await conn.execute(statement)
 
     async def get_user_by_username(self, username: str) -> Optional[asyncpg.Record]:

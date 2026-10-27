@@ -47,6 +47,8 @@ EMPTY_APPEND_ERROR = "Выборка пуста, версия не создан�
 
 REPUTATION_APPEND_SOURCES = ("reputation", "reputation_calc")
 
+SYSTEM_LIST_ERROR = "Системный лист нельзя изменять"
+
 
 def _user_key(user: dict) -> str:
     return user.get("sub") or user.get("user") or "anon"
@@ -62,6 +64,11 @@ async def _get_list_or_404(service: FeedListService, list_id: int) -> dict:
     if row is None:
         raise HTTPException(status_code=404, detail="Список не найден")
     return service.serialize_list(row)
+
+
+def _reject_system(meta: dict) -> None:
+    if meta["is_system"]:
+        raise HTTPException(status_code=409, detail=SYSTEM_LIST_ERROR)
 
 
 def _check_period_limit(filters: CHReadFilters) -> None:
@@ -143,6 +150,8 @@ async def create_feed_list(
 ):
     _require_db(service)
     created_by = _user_key(user)
+    if body.name.strip() in request.app.state.auto_list_service.names:
+        raise HTTPException(status_code=409, detail="Это имя занято системным листом")
 
     try:
         if body.source_type == "manual":
@@ -292,6 +301,7 @@ async def set_feed_list_status(
 ):
     _require_db(service)
     meta = await _get_list_or_404(service, list_id)
+    _reject_system(meta)
     if meta["busy"] or meta["current_version"] is None:
         raise HTTPException(status_code=409, detail="Список ещё не готов, смена статуса недоступна")
     await service.repo.set_status(list_id, body.status)
@@ -310,6 +320,7 @@ async def delete_feed_list(
 ):
     _require_db(service)
     meta = await _get_list_or_404(service, list_id)
+    _reject_system(meta)
     if meta["busy"]:
         raise HTTPException(
             status_code=409,
@@ -340,6 +351,7 @@ async def restore_feed_list_version(
         user=Depends(get_interactive_user),
 ):
     _require_db(service)
+    _reject_system(await _get_list_or_404(service, list_id))
     try:
         result = await service.restore_version(list_id, version)
     except (ListBusyError, ListArchivedError) as e:
@@ -363,6 +375,7 @@ async def append_feed_list(
 ):
     _require_db(service)
     meta = await _get_list_or_404(service, list_id)
+    _reject_system(meta)
     created_by = _user_key(user)
     service_calc_id = None
 
