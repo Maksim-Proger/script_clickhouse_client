@@ -21,6 +21,8 @@ class ReputationJob:
         self.lifecycle = lifecycle
         self.retry_attempts = retry_attempts
         self.retry_delay_seconds = retry_delay_seconds
+        self._running = False
+        self._wake = asyncio.Event()
 
     async def _run_snapshot_with_retry(self) -> None:
         for attempt in range(1, self.retry_attempts + 1):
@@ -39,6 +41,17 @@ class ReputationJob:
 
         logger.error("action=snapshot_exhausted message='All retry attempts failed, waiting for next cycle'")
 
+    @property
+    def is_running(self) -> bool:
+        return self._running
+
+    def request_manual(self) -> bool:
+        if self._running:
+            return False
+        self._running = True
+        self._wake.set()
+        return True
+
     async def run(self) -> None:
         logger.info(
             "action=job_start interval_hours=%.1f retry_attempts=%d retry_delay_seconds=%.0f",
@@ -46,11 +59,17 @@ class ReputationJob:
         )
 
         while not self.lifecycle.is_shutting_down:
+            self._running = True
             await self._run_snapshot_with_retry()
+            self._running = False
 
             try:
-                await asyncio.sleep(self.interval_sec)
+                await asyncio.wait_for(self._wake.wait(), timeout=self.interval_sec)
+                logger.info("action=manual_recalc_started")
+            except asyncio.TimeoutError:
+                pass
             except asyncio.CancelledError:
                 logger.info("action=job_cancelled")
                 break
+            self._wake.clear()
 

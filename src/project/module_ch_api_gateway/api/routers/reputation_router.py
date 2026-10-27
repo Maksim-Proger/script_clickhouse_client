@@ -4,6 +4,7 @@ from fastapi.responses import StreamingResponse
 from project.module_ch_api_gateway.api.dependencies.dependencies import (
     get_current_user,
     get_interactive_user,
+    get_nats_service,
     resolve_calc,
     resolve_exclusions,
 )
@@ -190,3 +191,25 @@ async def delete_reputation_calc(
     except CalcDeleteError as e:
         raise HTTPException(status_code=503, detail=str(e))
     return {"ok": True}
+
+
+@router.post("/reputation/recalc")
+async def start_reputation_recalc(
+        service=Depends(get_nats_service),
+        user=Depends(get_interactive_user),
+):
+    try:
+        return await service.request_reputation_recalc()
+    except Exception:
+        raise HTTPException(status_code=503, detail="Модуль репутации недоступен")
+
+
+@router.get("/reputation/recalc/status")
+async def get_reputation_recalc_status(
+        service=Depends(get_nats_service),
+        user=Depends(get_current_user),
+):
+    try:
+        return await service.request_reputation_status()
+    except Exception:
+        raise HTTPException(status_code=503, detail="Модуль репутации недоступен")
