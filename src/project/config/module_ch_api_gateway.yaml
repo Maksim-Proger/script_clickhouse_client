@@ -18,6 +18,9 @@ nats:
   pa_subject: "dg.pa.request"
   web_subject: "data.received"
   pa_timeout_sec: 320
+  reputation_recalc_subject: "reputation.recalc"
+  reputation_status_subject: "reputation.status"
+  reputation_timeout_sec: 3
 
 clickhouse:
   host: "10.81.0.136"
@@ -54,3 +57,4 @@ auto_lists:
   cis_countries: [ "RU", "BY", "AM", "KZ", "GE", "AZ", "KG", "UZ", "TJ", "MD" ]
   created_by: "system:auto-lists"
   interval_sec: 60
+  retry_sec: 600

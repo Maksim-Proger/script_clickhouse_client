@@ -170,4 +170,7 @@ def get_nats_service(request: Request, config=Depends(get_config)) -> NatsServic
         pa_subject=nats_cfg["pa_subject"],
         web_subject=nats_cfg["web_subject"],
         pa_timeout=float(nats_cfg["pa_timeout_sec"]),
+        reputation_recalc_subject=nats_cfg["reputation_recalc_subject"],
+        reputation_status_subject=nats_cfg["reputation_status_subject"],
+        reputation_timeout=float(nats_cfg["reputation_timeout_sec"]),
     )

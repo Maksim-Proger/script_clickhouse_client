@@ -1,8 +1,8 @@
 import asyncio
-import logging
-from datetime import datetime
-
 import asyncpg
+import logging
+import time
+from datetime import datetime
 
 from project.module_ch_api_gateway.models.filters import ReputationFilters
 from project.module_ch_api_gateway.services.feed_list_service import FeedListService, check_source_size
@@ -11,10 +11,6 @@ logger = logging.getLogger("ch-api-gateway.auto_lists")
 
 MIN_SCORE_SETTING = "feed_lists.min_score"
 UNKNOWN_COUNTRY = "ZZ"
-DEFAULT_MIN_SCORE = 50.0
-DEFAULT_CREATED_BY = "system:auto-lists"
-DEFAULT_INTERVAL = 60
-DEFAULT_CIS = ["RU", "BY", "AM", "KZ", "GE", "AZ", "KG", "UZ", "TJ", "MD"]
 
 
 class AutoListService:
@@ -23,17 +19,18 @@ class AutoListService:
         self.repo = feed_service.repo
         self.reputation_service = reputation_service
 
-        names = cfg.get("names", {})
-        cis = cfg.get("cis_countries", DEFAULT_CIS)
+        names = cfg["names"]
         self.lists = [
-            (names.get("all", "all"), []),
-            (names.get("not_ru", "not-ru"), ["RU", UNKNOWN_COUNTRY]),
-            (names.get("not_cis", "not-cis"), list(cis) + [UNKNOWN_COUNTRY]),
+            (names["all"], []),
+            (names["not_ru"], ["RU", UNKNOWN_COUNTRY]),
+            (names["not_cis"], list(cfg["cis_countries"]) + [UNKNOWN_COUNTRY]),
         ]
         self.names = {name for name, _ in self.lists}
-        self.min_score = float(cfg.get("min_score", DEFAULT_MIN_SCORE))
-        self.created_by = cfg.get("created_by", DEFAULT_CREATED_BY)
-        self.interval = cfg.get("interval_sec", DEFAULT_INTERVAL)
+        self.min_score = float(cfg["min_score"])
+        self.created_by = cfg["created_by"]
+        self.interval = cfg["interval_sec"]
+        self.retry_sec = cfg["retry_sec"]
+        self._attempts = {}
 
     @property
     def is_available(self) -> bool:
@@ -82,6 +79,11 @@ class AutoListService:
                 current = await self.repo.get_version(list_id, card["current_version"])
                 if current["snapshot_run_id"] == run_id and current["min_score"] == min_score:
                     return
+
+        attempt = self._attempts.get(name)
+        if attempt and attempt[:2] == (run_id, min_score) and time.monotonic() - attempt[2] < self.retry_sec:
+            return
+        self._attempts[name] = (run_id, min_score, time.monotonic())
 
         filters = ReputationFilters(score_from=min_score, country=countries, country_exclude=bool(countries))
         total = await self.reputation_service.count_snapshot(filters, run_id=run_id)

@@ -1,12 +1,12 @@
 import * as Auth from './auth.js';
-import { requireAuthOrRedirect, initProfilePanel } from './app_shell.js';
+import {initProfilePanel, requireAuthOrRedirect} from './app_shell.js';
 import {
-    renderExcludeOptions,
-    hasForbiddenNameChars,
-    NAME_CHARS_ERROR,
-    getCheckedExcludeIds,
     clearExcludeSelection,
     createFeedList,
+    getCheckedExcludeIds,
+    hasForbiddenNameChars,
+    NAME_CHARS_ERROR,
+    renderExcludeOptions,
     riskLabel,
 } from './feed_lists_api.js';
 
@@ -35,6 +35,11 @@ const reputationFilterDialog = document.getElementById("reputationFilterDialog")
 const reputationExportDialog = document.getElementById("reputationExportDialog");
 const repSaveListDialog = document.getElementById("repSaveListDialog");
 const repExcludeLists = document.getElementById("repExcludeLists");
+const btnRepRecalc = document.getElementById("btnRepRecalc");
+const btnRepSettings = document.getElementById("btnRepSettings");
+const recalcSpinner = document.getElementById("recalcSpinner");
+const settingsDialog = document.getElementById("settingsDialog");
+const settingMinScore = document.getElementById("settingMinScore");
 
 const repScoreFrom = document.getElementById("repScoreFrom");
 const repScoreTo = document.getElementById("repScoreTo");
@@ -52,7 +57,7 @@ let currentSearchId = null;
 const calcId = new URLSearchParams(window.location.search).get("calc");
 
 function withCalc(body) {
-    return calcId ? { ...body, calc_id: calcId } : body;
+    return calcId ? {...body, calc_id: calcId} : body;
 }
 
 function errorText(detail, status) {
@@ -94,7 +99,9 @@ function collectFilters() {
 }
 
 function resetFilterFields() {
-    [repScoreFrom, repScoreTo, repIp, repAsn, repCountry].forEach(el => { el.value = ""; });
+    [repScoreFrom, repScoreTo, repIp, repAsn, repCountry].forEach(el => {
+        el.value = "";
+    });
     repAsnExclude.checked = false;
     repCountryExclude.checked = false;
     clearExcludeSelection(repExcludeLists);
@@ -107,7 +114,7 @@ function updateFilterActive() {
 function postReputation(body) {
     return Auth.authFetch(`${Auth.API_BASE}/ch/reputation`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {"Content-Type": "application/json"},
         body: JSON.stringify(withCalc(body))
     });
 }
@@ -131,13 +138,13 @@ async function loadCalcMeta() {
 async function fetchPage(page) {
     let response;
     if (currentSearchId) {
-        response = await postReputation({ search_id: currentSearchId, page, page_size: PAGE_SIZE });
+        response = await postReputation({search_id: currentSearchId, page, page_size: PAGE_SIZE});
         if (response.status === 410) {
             currentSearchId = null;
-            response = await postReputation({ ...currentFilters, page, page_size: PAGE_SIZE });
+            response = await postReputation({...currentFilters, page, page_size: PAGE_SIZE});
         }
     } else {
-        response = await postReputation({ ...currentFilters, page, page_size: PAGE_SIZE });
+        response = await postReputation({...currentFilters, page, page_size: PAGE_SIZE});
     }
 
     if (!response.ok) {
@@ -147,7 +154,7 @@ async function fetchPage(page) {
 
     const result = await response.json();
     if (Array.isArray(result)) {
-        return { data: result, total: result.length, page: 1, total_pages: 1 };
+        return {data: result, total: result.length, page: 1, total_pages: 1};
     }
     return result;
 }
@@ -276,9 +283,13 @@ function renderPagination(page, totalPages) {
     paginationContainer.appendChild(pag);
 
     pag.querySelector("#btnPrevPage")
-        ?.addEventListener("click", () => { if (page > 1) goToPage(page - 1); });
+        ?.addEventListener("click", () => {
+            if (page > 1) goToPage(page - 1);
+        });
     pag.querySelector("#btnNextPage")
-        ?.addEventListener("click", () => { if (page < totalPages) goToPage(page + 1); });
+        ?.addEventListener("click", () => {
+            if (page < totalPages) goToPage(page + 1);
+        });
 }
 
 function goToPage(page) {
@@ -320,7 +331,7 @@ async function load(page = 1) {
 function postExport(body) {
     return Auth.authFetch(`${Auth.API_BASE}/ch/reputation/export`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {"Content-Type": "application/json"},
         body: JSON.stringify(withCalc(body))
     });
 }
@@ -336,13 +347,13 @@ async function exportReputation() {
     try {
         let response;
         if (currentSearchId) {
-            response = await postExport({ search_id: currentSearchId, only_ip: onlyIp });
+            response = await postExport({search_id: currentSearchId, only_ip: onlyIp});
             if (response.status === 410) {
                 currentSearchId = null;
-                response = await postExport({ ...currentFilters, only_ip: onlyIp });
+                response = await postExport({...currentFilters, only_ip: onlyIp});
             }
         } else {
-            response = await postExport({ ...currentFilters, only_ip: onlyIp });
+            response = await postExport({...currentFilters, only_ip: onlyIp});
         }
 
         if (!response.ok) {
@@ -367,7 +378,7 @@ async function exportReputation() {
             const headers = Object.keys(data[0]).join("\t");
             const rows = data.map(row => Object.values(row).map(v => v ?? "").join("\t"));
             const lines = [headers, ...rows].join("\n");
-            const blob = new Blob([lines], { type: "text/plain" });
+            const blob = new Blob([lines], {type: "text/plain"});
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
@@ -389,7 +400,8 @@ async function exportReputation() {
 
 btnRepFilter.addEventListener("click", () => {
     reputationFilterDialog.showModal();
-    renderExcludeOptions(repExcludeLists, currentFilters.exclude_list_ids || []).catch(() => {});
+    renderExcludeOptions(repExcludeLists, currentFilters.exclude_list_ids || []).catch(() => {
+    });
 });
 btnRepExport.addEventListener("click", () => reputationExportDialog.showModal());
 
@@ -411,8 +423,8 @@ document.getElementById("btnConfirmRepSaveList").addEventListener("click", async
 
     try {
         const reputationFilters = currentSearchId
-            ? { ...currentFilters, search_id: currentSearchId }
-            : { ...currentFilters };
+            ? {...currentFilters, search_id: currentSearchId}
+            : {...currentFilters};
 
         const created = await createFeedList({
             name,
@@ -453,9 +465,77 @@ btnRepGeneral.addEventListener("click", () => {
     window.location.href = "/templates/reputation.html";
 });
 
+const RECALC_URL = `${Auth.API_BASE}/ch/reputation/recalc`;
+const SETTINGS_URL = `${Auth.API_BASE}/api/settings`;
+let recalcTimer = null;
+
+async function checkRecalcStatus() {
+    clearTimeout(recalcTimer);
+    let running = false;
+    try {
+        const response = await Auth.authFetch(`${RECALC_URL}/status`);
+        if (response.ok) running = (await response.json()).running;
+    } catch (e) {
+        if (e.message === "Unauthorized") return;
+    }
+
+    const wasRunning = !recalcSpinner.classList.contains("is-hidden");
+    recalcSpinner.classList.toggle("is-hidden", !running);
+    if (running) {
+        recalcTimer = setTimeout(checkRecalcStatus, 5000);
+    } else if (wasRunning) {
+        currentSearchId = null;
+        load(1);
+    }
+}
+
+btnRepRecalc.addEventListener("click", async () => {
+    try {
+        const response = await Auth.authFetch(RECALC_URL, {method: "POST"});
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(errorText(result.detail, response.status));
+        alert(result.status === "started" ? "Расчёт запущен" : "Расчёт уже обновляется");
+        checkRecalcStatus();
+    } catch (e) {
+        if (e.message !== "Unauthorized") alert(`Ошибка: ${e.message}`);
+    }
+});
+
+btnRepSettings.addEventListener("click", async () => {
+    try {
+        const response = await Auth.authFetch(SETTINGS_URL);
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(errorText(result.detail, response.status));
+        settingMinScore.value = result["feed_lists.min_score"];
+        settingsDialog.showModal();
+    } catch (e) {
+        if (e.message !== "Unauthorized") alert(`Ошибка: ${e.message}`);
+    }
+});
+
+document.getElementById("btnSaveSettings").addEventListener("click", async () => {
+    try {
+        const response = await Auth.authFetch(SETTINGS_URL, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({values: {"feed_lists.min_score": settingMinScore.value}}),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.detail?.message || errorText(result.detail, response.status));
+        settingsDialog.close();
+        alert("Настройки сохранены");
+    } catch (e) {
+        if (e.message !== "Unauthorized") alert(`Ошибка: ${e.message}`);
+    }
+});
+
 if (calcId) {
     btnRepGeneral.classList.remove("is-hidden");
     loadCalcMeta();
+} else {
+    btnRepRecalc.classList.remove("is-hidden");
+    btnRepSettings.classList.remove("is-hidden");
+    checkRecalcStatus();
 }
 
 load();

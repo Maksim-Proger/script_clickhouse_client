@@ -10,12 +10,18 @@ class NatsService:
                  dg_subject: str,
                  pa_subject: str,
                  web_subject: str,
-                 pa_timeout: float):
+                 pa_timeout: float,
+                 reputation_recalc_subject: str,
+                 reputation_status_subject: str,
+                 reputation_timeout: float):
         self.infra = infra
         self.dg_subject = dg_subject
         self.pa_subject = pa_subject
         self.web_subject = web_subject
         self.pa_timeout = pa_timeout
+        self.reputation_recalc_subject = reputation_recalc_subject
+        self.reputation_status_subject = reputation_status_subject
+        self.reputation_timeout = reputation_timeout
 
     async def request_data_load(self, params: dict):
         payload = {"action": "load", "params": params}
@@ -57,3 +63,9 @@ class NatsService:
             self.web_subject,
             {"source": source, "profile": profile, "records": records},
         )
+
+    async def request_reputation_recalc(self) -> dict:
+        return await self.infra.request(self.reputation_recalc_subject, {}, timeout=self.reputation_timeout)
+
+    async def request_reputation_status(self) -> dict:
+        return await self.infra.request(self.reputation_status_subject, {}, timeout=self.reputation_timeout)

@@ -1,7 +1,6 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -9,27 +8,28 @@ from fastapi.responses import JSONResponse
 from project.module_ch_api_gateway.api.dependencies.dependencies import rate_limit_cleanup_loop
 from project.module_ch_api_gateway.api.routers import clickhouse_router, auth_router, data_router, user_router, \
     simple_router, feed_lists_router
-from project.module_ch_api_gateway.infrastructure.clickhouse_client import ClickHouseClient
-from project.module_ch_api_gateway.infrastructure.db import DatabaseManager
-from project.module_ch_api_gateway.infrastructure.feed_list_repo import FeedListRepository
-from project.module_ch_api_gateway.infrastructure.nats_client import NatsInfrastructure
-from project.module_ch_api_gateway.services.state_service import StateService
-from project.module_ch_api_gateway.services.user_service import UserService
-from project.module_ch_api_gateway.infrastructure.geoip_client import GeoIPClient
-from project.module_ch_api_gateway.api.routers import reputation_router
 from project.module_ch_api_gateway.api.routers import remote_router
+from project.module_ch_api_gateway.api.routers import reputation_router
+from project.module_ch_api_gateway.api.routers import settings_router
+from project.module_ch_api_gateway.infrastructure.clickhouse_client import ClickHouseClient
+from project.module_ch_api_gateway.infrastructure.clickhouse_stream_client import ClickHouseStreamClient
+from project.module_ch_api_gateway.infrastructure.db import DatabaseManager
 from project.module_ch_api_gateway.infrastructure.feed_list_mirror_client import FeedListMirrorClient
+from project.module_ch_api_gateway.infrastructure.feed_list_repo import FeedListRepository
+from project.module_ch_api_gateway.infrastructure.geoip_client import GeoIPClient
+from project.module_ch_api_gateway.infrastructure.nats_client import NatsInfrastructure
+from project.module_ch_api_gateway.infrastructure.reputation_calc_client import ReputationCalcClient
+from project.module_ch_api_gateway.infrastructure.reputation_calc_repo import ReputationCalcRepository
+from project.module_ch_api_gateway.services.auto_list_service import AutoListService, auto_lists_loop
 from project.module_ch_api_gateway.services.feed_list_service import (
     FeedListService,
     search_cleanup_loop,
     mirror_sync_loop,
 )
-from project.module_ch_api_gateway.infrastructure.clickhouse_stream_client import ClickHouseStreamClient
-from project.module_ch_api_gateway.infrastructure.reputation_calc_client import ReputationCalcClient
-from project.module_ch_api_gateway.infrastructure.reputation_calc_repo import ReputationCalcRepository
 from project.module_ch_api_gateway.services.reputation_calc_service import ReputationCalcService
 from project.module_ch_api_gateway.services.reputation_service import ReputationService
-from project.module_ch_api_gateway.services.auto_list_service import AutoListService, auto_lists_loop
+from project.module_ch_api_gateway.services.state_service import StateService
+from project.module_ch_api_gateway.services.user_service import UserService
 
 logger = logging.getLogger("ch-api-gateway")
 
@@ -118,7 +118,7 @@ def create_app(config: dict) -> FastAPI:
     app.state.auto_list_service = AutoListService(
         app.state.feed_list_service,
         ReputationService(app.state.ch_client, app.state.geoip_client, app.state.ch_stream_client),
-        config.get("auto_lists", {}),
+        config["auto_lists"],
     )
 
     app.state.nats_infra = NatsInfrastructure(url=config["nats"]["url"])
@@ -147,5 +147,6 @@ def create_app(config: dict) -> FastAPI:
     app.include_router(reputation_router.router)
     app.include_router(feed_lists_router.router)
     app.include_router(remote_router.router)
+    app.include_router(settings_router.router)
 
     return app

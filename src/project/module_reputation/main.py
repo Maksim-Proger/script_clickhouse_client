@@ -1,5 +1,6 @@
 import asyncio
 
+from project.module_reputation.consumers.recalc_consumer import NatsRecalcConsumer
 from project.module_reputation.core.reputation_job import ReputationJob
 from project.module_reputation.infrastructure.ch_client import ReputationCHClient
 from project.utils.lifecycle import Lifecycle
@@ -23,12 +24,19 @@ def main(config: dict) -> None:
             retry_delay_seconds=config["job"]["retry_delay_seconds"],
         )
 
-        task = asyncio.create_task(job.run())
+        consumer = NatsRecalcConsumer(config, job)
+
+        tasks = [
+            asyncio.create_task(job.run()),
+            asyncio.create_task(consumer.start()),
+        ]
 
         await lifecycle.shutdown_event.wait()
 
-        task.cancel()
-        await asyncio.gather(task, return_exceptions=True)
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        await consumer.stop()
 
         logger.info("action=process_stop status=clean")
 

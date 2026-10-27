@@ -184,6 +184,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_reputation_calcs_one_per_target
     WHERE status = 'building';
 """
 
+CREATE_SETTINGS_TABLE = """
+CREATE TABLE IF NOT EXISTS settings (
+    key         VARCHAR(100) PRIMARY KEY,
+    value       TEXT NOT NULL,
+    updated_by  VARCHAR(150) NOT NULL,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+"""
+
 UPGRADE_REPUTATION_LINKS = [
     "ALTER TABLE reputation_calcs ADD COLUMN IF NOT EXISTS service BOOLEAN NOT NULL DEFAULT FALSE",
     "ALTER TABLE feed_lists ADD COLUMN IF NOT EXISTS calc_source VARCHAR(30)",
@@ -385,6 +394,7 @@ class DatabaseManager:
                 await conn.execute(statement)
             for statement in UPGRADE_AUTO_LISTS:
                 await conn.execute(statement)
+            await conn.execute(CREATE_SETTINGS_TABLE)
 
     async def get_user_by_username(self, username: str) -> Optional[asyncpg.Record]:
         async with self.pool.acquire() as conn:
@@ -579,3 +589,19 @@ class DatabaseManager:
                     """,
                     profile, owner_id, error,
                 )
+
+    async def get_settings(self) -> dict[str, str]:
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch("SELECT key, value FROM settings")
+        return {r["key"]: r["value"] for r in rows}
+
+    async def save_settings(self, values: dict[str, str], username: str) -> None:
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                for key, value in values.items():
+                    await conn.execute(
+                        "INSERT INTO settings (key, value, updated_by, updated_at) "
+                        "VALUES ($1, $2, $3, now()) "
+                        "ON CONFLICT (key) DO UPDATE SET value = $2, updated_by = $3, updated_at = now()",
+                        key, value, username,
+                    )

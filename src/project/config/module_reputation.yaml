@@ -24,3 +24,10 @@ geo:
   noticeable_share: 0.001
   neutral: [ "RU", "BY", "AM", "KZ", "GE", "AZ", "KG", "UZ", "TJ", "MD" ]
 
+nats:
+  url: "nats://localhost:4222"
+  recalc_consumer:
+    subject: "reputation.recalc"
+  status_consumer:
+    subject: "reputation.status"
+
