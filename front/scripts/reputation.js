@@ -471,15 +471,20 @@ let recalcTimer = null;
 
 async function checkRecalcStatus() {
     clearTimeout(recalcTimer);
-    let running = false;
+    let running = null;
     try {
         const response = await Auth.authFetch(`${RECALC_URL}/status`);
-        if (response.ok) running = (await response.json()).running;
+        if (response.ok) running = (await response.json()).running === true;
     } catch (e) {
         if (e.message === "Unauthorized") return;
     }
 
     const wasRunning = !recalcSpinner.classList.contains("is-hidden");
+    if (running === null) {
+        if (wasRunning) recalcTimer = setTimeout(checkRecalcStatus, 5000);
+        return;
+    }
+
     recalcSpinner.classList.toggle("is-hidden", !running);
     if (running) {
         recalcTimer = setTimeout(checkRecalcStatus, 5000);

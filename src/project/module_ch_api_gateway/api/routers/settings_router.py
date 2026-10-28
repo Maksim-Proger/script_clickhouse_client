@@ -22,11 +22,15 @@ async def _current(request: Request) -> dict[str, str]:
     db = request.app.state.db
     if not db.is_connected:
         raise HTTPException(status_code=503, detail="БД временно недоступна")
-    default = f"{request.app.state.auto_list_service.min_score:g}"
+    default = _format_score(request.app.state.auto_list_service.min_score)
     return {MIN_SCORE_SETTING: default, **await db.get_settings()}
 
 
-def _check(key: str, value: str) -> None:
+def _format_score(score: float) -> str:
+    return str(int(score)) if score.is_integer() else str(score)
+
+
+def _check(key: str, value: str) -> str:
     if key != MIN_SCORE_SETTING:
         raise HTTPException(status_code=400, detail={"field": key, "message": "Неизвестная настройка"})
     try:
@@ -35,6 +39,7 @@ def _check(key: str, value: str) -> None:
         score = None
     if score is None or not 20 <= score <= 100:
         raise HTTPException(status_code=400, detail={"field": key, "message": "Нужно число от 20 до 100"})
+    return _format_score(score)
 
 
 @router.get("")
@@ -52,9 +57,7 @@ async def save_settings(
         user=Depends(get_interactive_user),
 ):
     old = await _current(request)
-    values = {key: value.strip() for key, value in body.values.items()}
-    for key, value in values.items():
-        _check(key, value)
+    values = {key: _check(key, value.strip()) for key, value in body.values.items()}
 
     changed = {key: value for key, value in values.items() if old[key] != value}
     if changed:
