@@ -6,6 +6,7 @@ import {
     createFeedList,
     hasForbiddenNameChars,
     NAME_CHARS_ERROR,
+    IP_REGEX,
 } from './feed_lists_api.js';
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -30,8 +31,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const btnUploadFile = document.getElementById("btnUploadFile");
     const btnConfirmExport = document.getElementById("btnConfirmExport");
     const btnApplyFilters = document.getElementById("btnApplyFilters");
-
-    const IP_REGEX = /^(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)){3}$/;
 
     let currentFilters = {};
     let currentPage = 1;
