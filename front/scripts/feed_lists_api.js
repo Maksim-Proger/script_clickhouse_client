@@ -89,6 +89,19 @@ export function clearExcludeSelection(container) {
     renderExcludeFooter(container);
 }
 
+export async function renderPresetOptions(select) {
+    let presets = [];
+    try {
+        const response = await Auth.authFetch(`${Auth.API_BASE}/ch/reputation/presets`);
+        if (response.ok) presets = await response.json();
+    } catch (e) {
+        if (e.message === "Unauthorized") return;
+    }
+    select.innerHTML = `<option value="">Общая репутация</option>` + presets.map(p =>
+        `<option value="${escapeHtml(p.key)}">${escapeHtml(p.title)}</option>`
+    ).join("");
+}
+
 export async function renderExcludeOptions(container, appliedIds = []) {
     if (!container) return;
     const selected = getSelection(container);
