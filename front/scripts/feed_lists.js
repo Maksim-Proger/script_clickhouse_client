@@ -2,6 +2,7 @@ import * as Auth from './auth.js';
 import { requireAuthOrRedirect, initProfilePanel } from './app_shell.js';
 import {
     fetchFeedLists,
+    searchIpInLists,
     createFeedList,
     escapeHtml,
     riskLabel,
@@ -9,6 +10,7 @@ import {
     getCheckedExcludeIds,
     hasForbiddenNameChars,
     NAME_CHARS_ERROR,
+    IP_REGEX,
 } from './feed_lists_api.js';
 
 const LOGIN_PAGE = '/templates/new_index.html';
@@ -29,6 +31,8 @@ const container = document.getElementById("feed-lists");
 const paginationContainer = document.getElementById("pagination-container");
 const searchInput = document.getElementById("feedSearch");
 const showArchived = document.getElementById("feedShowArchived");
+const ipSearchInput = document.getElementById("feedIpSearch");
+const ipSearchNote = document.getElementById("feed-ip-note");
 
 const itemsDialog = document.getElementById("feedItemsDialog");
 const itemsTitle = document.getElementById("feedItemsTitle");
@@ -47,7 +51,10 @@ let currentItemsListId = null;
 let appendListId = null;
 let searchDebounce = null;
 let refreshTimer = null;
+let ipSearchDebounce = null;
+let ipResultsShown = false;
 const listsById = new Map();
+const foundListNames = new Map();
 const versionsByList = new Map();
 const expandedIds = new Set();
 
@@ -84,6 +91,7 @@ function errorText(detail, status) {
 }
 
 async function loadLists(page = 1) {
+    if (ipResultsShown) return;
     currentPage = page;
     try {
         container.innerHTML = "<p style='padding:20px'>Загрузка...</p>";
@@ -95,6 +103,7 @@ async function loadLists(page = 1) {
             page,
             pageSize: PAGE_SIZE,
         });
+        if (ipResultsShown) return;
 
         let lists = result.data || [];
         if (!showArchived.checked) {
@@ -153,7 +162,7 @@ function renderTable(lists) {
         html += `<tr>
             <td>${toggle}</td>
             <td>${l.id}</td>
-            <td>${escapeHtml(l.name)}${l.is_system ? `<div class="feed-system">системный</div>` : ""}</td>
+            <td>${escapeHtml(l.name)}${l.is_system ? `<div class="feed-mark">системный</div>` : ""}</td>
             <td title="${escapeHtml(l.description)}">${escapeHtml(truncate(l.description, 60))}</td>
             <td>${renderSource(l)}</td>
             <td>${renderBadge(l)}</td>
@@ -336,9 +345,83 @@ function renderPagination(page, totalPages) {
     pag.querySelector("#btnNextPage")?.addEventListener("click", () => loadLists(page + 1));
 }
 
+function renderIpResults(rows) {
+    foundListNames.clear();
+    rows.forEach(r => foundListNames.set(r.list_id, r.list_name));
+
+    let html = `<table><thead><tr>
+        <th>Список</th>
+        <th>Совпадение</th>
+        <th>Score</th>
+        <th>Риск</th>
+        <th>ASN</th>
+        <th>Страна</th>
+        <th>Источник</th>
+        <th>Впервые</th>
+        <th>Последний раз</th>
+    </tr></thead><tbody>`;
+
+    rows.forEach(r => {
+        const marks = [];
+        if (r.list_status === "archived") marks.push("архив");
+        if (r.busy) marks.push("обновляется");
+
+        html += `<tr style="cursor:pointer" onclick="window.openListItems(${r.list_id})">
+            <td>${escapeHtml(r.list_name)}${marks.length ? `<div class="feed-mark">${marks.join(", ")}</div>` : ""}</td>
+            <td>${escapeHtml(r.value)}${r.value_type === "cidr" ? `<div class="feed-mark">сеть</div>` : ""}</td>
+            <td>${renderItemScore(r.score)}</td>
+            <td>${renderItemRisk(r.risk_level)}</td>
+            <td>${r.asn ? "AS" + r.asn : "-"}</td>
+            <td>${escapeHtml(r.country) || "-"}</td>
+            <td>${escapeHtml(r.source) || "-"}</td>
+            <td>${formatDate(r.first_seen)}</td>
+            <td>${formatDate(r.last_seen)}</td>
+        </tr>`;
+    });
+
+    html += "</tbody></table>";
+    container.innerHTML = html;
+}
+
+function showCatalog(note) {
+    ipSearchNote.innerHTML = note;
+    if (!ipResultsShown) return;
+    ipResultsShown = false;
+    loadLists(currentPage);
+}
+
+function resetIpSearch() {
+    clearTimeout(ipSearchDebounce);
+    ipSearchInput.value = "";
+    ipSearchNote.innerHTML = "";
+    ipResultsShown = false;
+}
+
+async function searchIp(ip) {
+    try {
+        const result = await searchIpInLists(ip);
+        if (ipSearchInput.value.trim() !== ip) return;
+
+        if (!result.total) {
+            showCatalog("<p style='padding:20px 20px 0'>IP не найден ни в одном списке</p>");
+            return;
+        }
+
+        const rows = result.data || [];
+        clearTimeout(refreshTimer);
+        ipResultsShown = true;
+        ipSearchNote.innerHTML = "";
+        paginationContainer.innerHTML = "";
+        renderIpResults(rows);
+    } catch (e) {
+        if (e.message === "Unauthorized" || ipSearchInput.value.trim() !== ip) return;
+        showCatalog(`<p style='padding:20px 20px 0; color:var(--color-danger)'>Ошибка: ${escapeHtml(e.message)}</p>`);
+    }
+}
+
 window.openListItems = async (listId) => {
     currentItemsListId = listId;
-    const name = listsById.get(listId)?.name ?? `#${listId}`;
+    const name = foundListNames.get(listId) ?? listsById.get(listId)?.name ?? `#${listId}`;
     itemsTitle.textContent = `Элементы списка "${name}"`;
     itemsMeta.textContent = "";
     itemsTable.innerHTML = "Загрузка...";
@@ -823,10 +906,28 @@ document.querySelectorAll('input[name="appendSource"]').forEach(radio => {
 btnConfirmAppend.addEventListener("click", submitAppend);
 
 searchInput.addEventListener("input", () => {
+    resetIpSearch();
     clearTimeout(searchDebounce);
     searchDebounce = setTimeout(() => loadLists(1), 300);
 });
 
-showArchived.addEventListener("change", () => loadLists(1));
+showArchived.addEventListener("change", () => {
+    resetIpSearch();
+    loadLists(1);
+});
+
+ipSearchInput.addEventListener("input", () => {
+    clearTimeout(ipSearchDebounce);
+    const ip = ipSearchInput.value.trim();
+    if (!ip) {
+        showCatalog("");
+        return;
+    }
+    if (IP_REGEX.test(ip)) {
+        ipSearchDebounce = setTimeout(() => searchIp(ip), 500);
+    } else if (!ipResultsShown) {
+        ipSearchNote.innerHTML = "";
+    }
+});
 
 loadLists();

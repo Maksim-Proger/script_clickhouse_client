@@ -368,6 +368,26 @@ class FeedListRepository:
                 f"{_CATALOG_SELECT} WHERE l.name = $1 AND l.status <> 'deleting'", name
             )
 
+    async def search_ip(self, ip: str) -> list[asyncpg.Record]:
+        async with self.db.pool.acquire() as conn:
+            return await conn.fetch(
+                """
+                SELECT l.id AS list_id, l.name AS list_name, l.status AS list_status,
+                       EXISTS (SELECT 1 FROM feed_list_versions b
+                               WHERE b.list_id = l.id
+                                 AND b.status IN ('building', 'pending_sync')) AS busy,
+                       i.value, i.value_type, i.score, i.risk_level, i.asn, i.country,
+                       i.source, i.first_seen, i.last_seen
+                FROM feed_list_items i
+                JOIN feed_lists l ON l.id = i.list_id AND i.version = l.current_version
+                WHERE i.value_net >>= $1::inet
+                  AND l.status IN ('active', 'archived')
+                  AND NOT l.is_system
+                ORDER BY l.name, i.value
+                """,
+                ip,
+            )
+
     async def copy_items(self, list_id: int, from_version: int, to_version: int) -> None:
         async with self.db.pool.acquire() as conn:
             await conn.execute(

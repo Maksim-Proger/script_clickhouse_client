@@ -4,6 +4,8 @@ const EXCLUDE_PAGE_SIZE = 50;
 
 export const NAME_CHARS_ERROR = "В названии нельзя использовать символы / ? # %";
 
+export const IP_REGEX = /^(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)){3}$/;
+
 export function hasForbiddenNameChars(name) {
     return /[/?#%\r\n\t]/.test(name);
 }
@@ -36,6 +38,16 @@ export async function fetchFeedLists({ search = "", status = "", page = 1, pageS
     if (status) params.set("status", status);
 
     const response = await Auth.authFetch(`${Auth.API_BASE}/api/feed-lists/?${params}`);
+    if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.detail || `HTTP ${response.status}`);
+    }
+    return response.json();
+}
+
+export async function searchIpInLists(ip) {
+    const params = new URLSearchParams({ ip });
+    const response = await Auth.authFetch(`${Auth.API_BASE}/api/feed-lists/search-ip?${params}`);
     if (!response.ok) {
         const err = await response.json().catch(() => ({}));
         throw new Error(err.detail || `HTTP ${response.status}`);

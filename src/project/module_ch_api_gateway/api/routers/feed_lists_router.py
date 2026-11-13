@@ -1,5 +1,6 @@
 import asyncio
 import asyncpg
+import ipaddress
 import json
 import logging
 from datetime import datetime
@@ -48,6 +49,8 @@ EMPTY_APPEND_ERROR = "Выборка пуста, версия не создан�
 REPUTATION_APPEND_SOURCES = ("reputation", "reputation_calc")
 
 SYSTEM_LIST_ERROR = "Системный лист нельзя изменять"
+
+INVALID_IP_ERROR = "Некорректный IPv4-адрес"
 
 
 def _user_key(user: dict) -> str:
@@ -117,6 +120,15 @@ def _json_default(value):
     if isinstance(value, datetime):
         return value.isoformat(sep=" ")
     return str(value)
+
+def _parse_ipv4(value: str) -> str:
+    try:
+        address = ipaddress.ip_address(value.strip())
+    except ValueError:
+        raise HTTPException(status_code=400, detail=INVALID_IP_ERROR)
+    if address.version != 4:
+        raise HTTPException(status_code=400, detail=INVALID_IP_ERROR)
+    return str(address)
 
 
 @router.get("/")
@@ -207,6 +219,22 @@ async def create_feed_list(
         raise HTTPException(status_code=503, detail="Источник данных временно недоступен")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/search-ip")
+async def search_ip_in_feed_lists(
+        ip: str = Query(..., max_length=64),
+        service: FeedListService = Depends(get_feed_list_service),
+        user=Depends(get_current_user),
+):
+    _require_db(service)
+    address = _parse_ipv4(ip)
+    rows = await service.repo.search_ip(address)
+    logger.info(
+        "action=feed_list_ip_search ip=%s found=%d user=%s",
+        address, len(rows), _user_key(user),
+    )
+    return {"ip": address, "total": len(rows), "data": [dict(r) for r in rows]}
 
 
 @router.get("/{list_id}")
