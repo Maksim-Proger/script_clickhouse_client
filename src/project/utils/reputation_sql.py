@@ -170,9 +170,12 @@ def build_snapshot_sql(presets: list[dict]) -> str:
         SELECT if(target = 'general', reputation_run_id,
                   concat('preset:', target, ':', toString(toUnixTimestamp(ts_now)))) AS run_id,
                {_OUTPUT_COLUMNS}
-        FROM final_scores
+        FROM (
+            SELECT * 
+            FROM final_scores
+            WHERE score >= 20
+        )
         ARRAY JOIN arrayConcat({labels}) AS target
-        WHERE score >= 20
         ORDER BY target, score DESC, events_count DESC, ip_address
         LIMIT 100000 BY target
     """
