@@ -12,6 +12,7 @@ job:
   interval_hours: 6.0
   retry_attempts: 3
   retry_delay_seconds: 60
+  cleanup_old_snapshots: true
 
 geo:
   country_db_path: "/opt/geoip/RU-GeoIP-Country.mmdb"
@@ -30,4 +31,15 @@ nats:
     subject: "reputation.recalc"
   status_consumer:
     subject: "reputation.status"
+
+presets:
+  - key: ru
+    countries: [ "RU" ]
+    exclude: false
+  - key: not_ru
+    countries: [ "RU", "ZZ" ]
+    exclude: true
+  - key: cis
+    countries: [ "RU", "BY", "AM", "KZ", "GE", "AZ", "KG", "UZ", "TJ", "MD" ]
+    exclude: false
 

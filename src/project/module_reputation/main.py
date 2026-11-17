@@ -15,7 +15,12 @@ def main(config: dict) -> None:
         lifecycle = Lifecycle("reputation")
         lifecycle.install_signal_handlers()
 
-        client = ReputationCHClient(config["clickhouse"], config["geo"])
+        client = ReputationCHClient(
+            config["clickhouse"],
+            config["geo"],
+            presets=config.get("presets", []),
+            cleanup_enabled=config["job"].get("cleanup_old_snapshots", True)
+        )
         job = ReputationJob(
             client=client,
             interval_hours=config["job"]["interval_hours"],

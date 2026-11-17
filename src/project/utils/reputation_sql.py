@@ -1,9 +1,11 @@
+import re
+
 BLOCKED_IPS_TABLE = "feedgen.blocked_ips_data"
 GEO_CACHE_TABLE = "feedgen.ip_geo_cache_data"
 GEO_MATRIX_TABLE = "feedgen.geo_reputation_matrix_data"
 GEO_MATRIX_RUNS_TABLE = "feedgen.geo_reputation_matrix_runs_data"
 
-_SCORING_TEMPLATE = """
+_SCORING_CTES = """
 WITH
     toDateTime(%(now_utc)s, 'UTC') AS ts_now,
     concat('iprep_', toString(toUnixTimestamp(ts_now))) AS reputation_run_id,
@@ -90,19 +92,26 @@ WITH
         SELECT *, round(least(100.0, base_score + geo_bonus), 1) AS score
         FROM adjusted
     )
-SELECT reputation_run_id AS run_id, ts_now AS computed_at, ip_address, score,
+"""
+
+_OUTPUT_COLUMNS = """ts_now AS computed_at, ip_address, score,
        multiIf(score >= 80, 'critical', score >= 60, 'high', score >= 40, 'bad',
                score >= 20, 'suspicious', 'low') AS risk_level,
        N AS events_count, M5 AS max_5m_events, MH AS max_hour_events,
        W5 AS active_5m_windows, WH AS active_hours, WD AS active_days,
        S AS sources_count, first_seen, last_seen,
        base_score, geo_coefficient, geo_bonus, geo_country, geo_category,
-       %(matrix_version)s AS geo_matrix_version, %(geo_version)s AS geo_version
+       %(matrix_version)s AS geo_matrix_version, %(geo_version)s AS geo_version"""
+
+_GENERAL_TAIL = f"""
+SELECT reputation_run_id AS run_id, {_OUTPUT_COLUMNS}
 FROM final_scores
 WHERE score >= 20
 ORDER BY score DESC, events_count DESC, ip_address
 LIMIT 100000
 """
+
+_SCORING_TEMPLATE = _SCORING_CTES + _GENERAL_TAIL
 
 
 def window_where(days: int = 7,
@@ -124,3 +133,46 @@ def build_scoring_sql(by_source: bool = False,
         geo_matrix=GEO_MATRIX_TABLE,
         where=window_where(by_source=by_source, by_profile=by_profile),
     )
+
+
+_PRESET_KEY_RE = re.compile(r"^[a-z][a-z0-9_]*$")
+_COUNTRY_RE = re.compile(r"^[A-Z]{2}$")
+
+
+def _preset_labels(preset: dict) -> str:
+    key = preset["key"]
+    if not _PRESET_KEY_RE.match(key) or key == "general":
+        raise ValueError(f"Некорректный ключ пресета: {key}")
+
+    countries = [str(c).upper() for c in preset["countries"]]
+    for country in countries:
+        if not _COUNTRY_RE.match(country):
+            raise ValueError(f"Некорректный код страны в пресете {key}: {country}")
+
+    operator = "NOT IN" if preset.get("exclude", False) else "IN"
+    values = ", ".join(f"'{c}'" for c in countries)
+    condition = f"geo_country {operator} ({values})"
+    if preset.get("score_from") is not None:
+        condition += f" AND score >= {float(preset['score_from'])}"
+
+    return f"if({condition}, ['{key}'], [])"
+
+
+def build_snapshot_sql(presets: list[dict]) -> str:
+    labels = ", ".join(["['general']"] + [_preset_labels(p) for p in presets])
+    head = _SCORING_CTES.format(
+        blocked_ips=BLOCKED_IPS_TABLE,
+        geo_cache=GEO_CACHE_TABLE,
+        geo_matrix=GEO_MATRIX_TABLE,
+        where=window_where(),
+    )
+    return head + f"""
+        SELECT if(target = 'general', reputation_run_id,
+                  concat('preset:', target, ':', toString(toUnixTimestamp(ts_now)))) AS run_id,
+               {_OUTPUT_COLUMNS}
+        FROM final_scores
+        ARRAY JOIN arrayConcat({labels}) AS target
+        WHERE score >= 20
+        ORDER BY target, score DESC, events_count DESC, ip_address
+        LIMIT 100000 BY target
+    """

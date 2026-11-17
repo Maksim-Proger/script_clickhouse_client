@@ -41,3 +41,4 @@ class ReputationFilters(BaseModel):
     search_id: Optional[str] = None
     exclude_list_ids: list[int] = []
     calc_id: Optional[int] = Field(None, ge=1)
+    preset: Optional[str] = None
