@@ -58,3 +58,12 @@ auto_lists:
   created_by: "system:auto-lists"
   interval_sec: 60
   retry_sec: 600
+
+reputation_presets:
+  - key: ru
+    title: "Россия"
+  - key: not_ru
+    title: "Без России"
+  - key: cis
+    title: "СНГ"
+

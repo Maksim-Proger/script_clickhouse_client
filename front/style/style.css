@@ -29,6 +29,8 @@
     --shadow-lg: 0 20px 40px -10px rgba(0, 21, 21, 0.15);
 
     --font-family: 'Manrope', 'Arial', 'Helvetica', sans-serif;
+
+    --icon-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394A3B8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
 }
 
 * {
@@ -973,6 +975,50 @@ tr.clickable.expanded td:first-child::before {
 }
 
 .login-field textarea:focus {
+    border-color: var(--color-brand);
+    box-shadow: 0 0 0 3px rgba(1, 205, 203, 0.18);
+}
+
+.login-field select {
+    padding: 11px 36px 11px 12px;
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-sm);
+    outline: none;
+    font-family: var(--font-family);
+    font-size: 14px;
+    color: var(--color-text);
+    background: var(--color-surface) var(--icon-chevron) no-repeat right 12px center / 14px;
+    appearance: none;
+    cursor: pointer;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.login-field select:focus {
+    border-color: var(--color-brand);
+    box-shadow: 0 0 0 3px rgba(1, 205, 203, 0.18);
+}
+
+.header-select {
+    padding: 7px 34px 7px 14px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    outline: none;
+    font-family: var(--font-family);
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 18px;
+    color: var(--color-text);
+    background: var(--color-bg) var(--icon-chevron) no-repeat right 12px center / 14px;
+    appearance: none;
+    cursor: pointer;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.header-select:hover {
+    border-color: var(--color-brand);
+}
+
+.header-select:focus {
     border-color: var(--color-brand);
     box-shadow: 0 0 0 3px rgba(1, 205, 203, 0.18);
 }

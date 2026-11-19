@@ -36,28 +36,28 @@ logger = logging.getLogger("ch-api-gateway")
 
 def create_app(config: dict) -> FastAPI:
     @asynccontextmanager
-    async def lifespan(app: FastAPI):
+    async def lifespan(app_main: FastAPI):
         async def on_db_connected():
-            await app.state.user_service.seed_admin()
-            await app.state.user_service.load_revoked_jtis()
-            app.state.user_service.start_cleanup_loop()
-            await app.state.feed_list_service.fail_stale_versions()
-            await app.state.reputation_calc_service.cleanup_service_calcs()
-            await app.state.reputation_calc_service.fail_stale_calcs()
+            await app_main.state.user_service.seed_admin()
+            await app_main.state.user_service.load_revoked_jtis()
+            app_main.state.user_service.start_cleanup_loop()
+            await app_main.state.feed_list_service.fail_stale_versions()
+            await app_main.state.reputation_calc_service.cleanup_service_calcs()
+            await app_main.state.reputation_calc_service.fail_stale_calcs()
 
-        connected = await app.state.db.connect_safe()
+        connected = await app_main.state.db.connect_safe()
         if connected:
             await on_db_connected()
         else:
-            app.state.db.start_reconnect_loop(on_connect=on_db_connected)
+            app_main.state.db.start_reconnect_loop(on_connect=on_db_connected)
 
-        await app.state.nats_infra.connect()
+        await app_main.state.nats_infra.connect()
         logger.info("action=nats_connect status=success")
 
-        cleanup_task = asyncio.create_task(rate_limit_cleanup_loop(app.state))
-        search_cleanup_task = asyncio.create_task(search_cleanup_loop(app.state.feed_list_service.repo))
-        mirror_sync_task = asyncio.create_task(mirror_sync_loop(app.state.feed_list_service))
-        auto_lists_task = asyncio.create_task(auto_lists_loop(app.state.auto_list_service))
+        cleanup_task = asyncio.create_task(rate_limit_cleanup_loop(app_main.state))
+        search_cleanup_task = asyncio.create_task(search_cleanup_loop(app_main.state.feed_list_service.repo))
+        mirror_sync_task = asyncio.create_task(mirror_sync_loop(app_main.state.feed_list_service))
+        auto_lists_task = asyncio.create_task(auto_lists_loop(app_main.state.auto_list_service))
         try:
             yield
         finally:
@@ -65,17 +65,18 @@ def create_app(config: dict) -> FastAPI:
             search_cleanup_task.cancel()
             mirror_sync_task.cancel()
             auto_lists_task.cancel()
-            app.state.user_service.stop_cleanup_loop()
-            await app.state.nats_infra.close()
+            app_main.state.user_service.stop_cleanup_loop()
+            await app_main.state.nats_infra.close()
             logger.info("action=nats_disconnect status=success")
-            await app.state.db.close()
-            await app.state.ch_client.close()
+            await app_main.state.db.close()
+            await app_main.state.ch_client.close()
             logger.info("action=ch_client_close status=success")
-            app.state.geoip_client.close()
+            app_main.state.geoip_client.close()
 
     app = FastAPI(lifespan=lifespan)
 
     app.state.config = config
+    app.state.reputation_presets = config.get("reputation_presets", [])
     app.state.rate_limit_counters = {}
 
     pg = config["postgres"]

@@ -16,14 +16,6 @@ from project.module_ch_api_gateway.services.feed_list_service import (
 
 logger = logging.getLogger("ch-api-gateway.reputation")
 
-_LATEST_SNAPSHOT_PREDICATE = """
-    (computed_at, run_id) IN (
-        SELECT computed_at, run_id
-        FROM feedgen.ip_reputation_snapshots
-        ORDER BY computed_at DESC, run_id DESC
-        LIMIT 1
-    )
-""".strip()
 
 _SNAPSHOT_TABLE = "feedgen.ip_reputation_snapshots"
 _CALC_TABLE = "feedgen.ip_reputation_calcs"
@@ -40,6 +32,7 @@ _RUN_ID_RE = re.compile(r"^iprep_\d+$")
 
 _LATEST_SNAPSHOT_QUERY = (
     "SELECT run_id, computed_at FROM feedgen.ip_reputation_snapshots "
+    "WHERE startsWith(run_id, 'iprep_') "
     "ORDER BY computed_at DESC, run_id DESC LIMIT 1"
 )
 
@@ -47,6 +40,18 @@ _INT_FIELDS = (
     "events_count", "max_5m_events", "max_hour_events",
     "active_5m_windows", "active_hours", "active_days", "sources_count",
 )
+
+
+def _latest_snapshot_condition(prefix: str) -> str:
+    return f"""
+    (computed_at, run_id) IN (
+        SELECT computed_at, run_id
+        FROM feedgen.ip_reputation_snapshots
+        WHERE startsWith(run_id, '{prefix}')
+        ORDER BY computed_at DESC, run_id DESC
+        LIMIT 1
+    )
+""".strip()
 
 
 def _safe_cidr(value: str) -> str:
@@ -70,15 +75,23 @@ def check_country_codes(filters: ReputationFilters) -> list[str]:
 
 def _build_where(filters: ReputationFilters,
                  exclude_lists: Optional[list[dict]] = None,
-                 run_id: Optional[str] = None) -> str:
+                 run_id: Optional[str] = None,
+                 preset_keys: tuple = ()) -> str:
+    if filters.preset is not None and filters.calc_id is not None:
+        raise ValueError("Нельзя одновременно выбрать пресет и ручной расчет")
+
     if filters.calc_id is not None:
         conditions = [f"calc_id = {int(filters.calc_id)}"]
     elif run_id is not None:
         if not _RUN_ID_RE.match(run_id):
             raise ValueError(f"Некорректный идентификатор снимка: {run_id}")
         conditions = [f"run_id = '{run_id}'"]
+    elif filters.preset is not None:
+        if filters.preset not in preset_keys:
+            raise ValueError("Неизвестный пресет")
+        conditions = [_latest_snapshot_condition(f"preset:{filters.preset}:")]
     else:
-        conditions = [_LATEST_SNAPSHOT_PREDICATE]
+        conditions = [_latest_snapshot_condition("iprep_")]
 
     if filters.score_from is not None:
         conditions.append(f"score >= {float(filters.score_from)}")
@@ -142,10 +155,11 @@ def _only_ip_row(raw: str) -> str:
 
 
 class ReputationService:
-    def __init__(self, ch_client, geoip_client, stream_client):
+    def __init__(self, ch_client, geoip_client, stream_client, preset_keys=()):
         self.ch_client = ch_client
         self.geoip_client = geoip_client
         self.stream_client = stream_client
+        self.preset_keys = list(preset_keys)
 
     async def _enrich(self, records: list[dict]) -> list[dict]:
         return await asyncio.to_thread(self.geoip_client.enrich_batch, records)
@@ -158,7 +172,7 @@ class ReputationService:
                                  run_id: Optional[str] = None):
         query = (
             f"SELECT {_SELECT_COLS} FROM {_table(filters)} "
-            f"{_build_where(filters, exclude_lists, run_id)} ORDER BY score DESC, ip_address"
+            f"{_build_where(filters, exclude_lists, run_id, self.preset_keys)} ORDER BY score DESC, ip_address"
         )
         async for chunk in self.stream_client.iter_rows(query, chunk_size):
             raw = _coerce_ints(chunk)
@@ -177,7 +191,10 @@ class ReputationService:
     async def count_snapshot(self, filters: ReputationFilters, run_id: Optional[str] = None) -> int:
         try:
             res = await self.ch_client.fetch_json(
-                _build_count_query(_table(filters), _build_where(filters, run_id=run_id))
+                _build_count_query(
+                    _table(filters),
+                    _build_where(filters, run_id=run_id, preset_keys=self.preset_keys),
+                )
             )
             return int(res["data"][0]["total"])
         except ValueError:
@@ -236,7 +253,7 @@ class ReputationService:
                                       search_id=built["search_id"])
 
             table = _table(filters)
-            where = _build_where(filters)
+            where = _build_where(filters, preset_keys=self.preset_keys)
 
             data_res = await self.ch_client.fetch_json(_build_page_query(table, where, page, page_size))
             page_rows = _coerce_ints(data_res.get("data", []))
@@ -285,7 +302,10 @@ class ReputationService:
             raise SourceUnavailableError()
 
     async def iter_export_chunks(self, filters: ReputationFilters, user: str, feed_service, search_id):
-        logger.info("action=reputation_export search_id=%s only_ip=%s user=%s", search_id, filters.only_ip, user)
+        logger.info(
+            "action=reputation_export search_id=%s only_ip=%s user=%s",
+            search_id, filters.only_ip, user
+        )
 
         if search_id:
             async for chunk in feed_service.iter_search_rows(user, search_id):

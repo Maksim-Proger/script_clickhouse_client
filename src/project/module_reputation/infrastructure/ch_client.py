@@ -1,15 +1,14 @@
 import asyncio
 import logging
 import random
+from collections import Counter
 from clickhouse_driver import Client as CHClient
 from project.module_reputation.infrastructure.geo_matrix import GeoMatrixBuilder
 
 from project.utils.geo import CountryResolver, prepare_geo
-from project.utils.reputation_sql import build_scoring_sql, window_where
+from project.utils.reputation_sql import build_snapshot_sql, window_where
 
 logger = logging.getLogger("reputation.ch_client")
-
-_SCORING_SQL = build_scoring_sql()
 
 _INSERT_SQL = """
               INSERT INTO feedgen.ip_reputation_snapshots_data
@@ -22,15 +21,35 @@ _INSERT_SQL = """
               VALUES \
               """
 
+_RUN_DATE_SQL = (
+    "SELECT toDate(computed_at) FROM feedgen.ip_reputation_snapshots_data "
+    "WHERE run_id = %(run_id)s LIMIT 1"
+)
+
+_OLD_DATES_SQL = (
+    "SELECT DISTINCT toDate(computed_at) FROM feedgen.ip_reputation_snapshots_data "
+    "WHERE toDate(computed_at) < %(keep_from)s"
+)
+
+_DROP_PARTITION_SQL = "ALTER TABLE feedgen.ip_reputation_snapshots_data DROP PARTITION %(day)s"
+
+
+def _set_name(run_id: str) -> str:
+    if run_id.startswith("preset:"):
+        return run_id.split(":")[1]
+    return "general"
+
 
 class ReputationCHClient:
-    def __init__(self, cfg: dict, geo_cfg: dict):
+    def __init__(self, cfg: dict, geo_cfg: dict, presets: list[dict], cleanup_enabled: bool):
         self._cfg = cfg
         self._geo_cfg = geo_cfg
         self._matrix = GeoMatrixBuilder(geo_cfg)
+        self._snapshot_sql = build_snapshot_sql(presets)
+        self._cleanup_enabled = cleanup_enabled
 
-    def _create_client(self) -> CHClient:
-        chosen_host = random.choice(self._cfg["write_hosts"])
+    def _create_client(self, host: str = None) -> CHClient:
+        chosen_host = host or random.choice(self._cfg["write_hosts"])
         logger.info("action=client_init target_host=%s", chosen_host)
         return CHClient(
             host=chosen_host,
@@ -51,19 +70,48 @@ class ReputationCHClient:
                 geo = prepare_geo(client, resolver, now_utc, window_where(), {}, self._matrix.rules_version)
 
             logger.info("action=scoring_query_start matrix_version=%s", geo["matrix_version"] or "none")
-            rows = client.execute(_SCORING_SQL, {"now_utc": now_utc, **geo})
+            rows = client.execute(self._snapshot_sql, {"now_utc": now_utc, **geo})
 
             if not rows:
                 logger.warning("action=scoring_empty message='Query returned 0 candidates'")
                 return 0
 
-            logger.info("action=scoring_query_done candidates=%d", len(rows))
+            counts = Counter(_set_name(row[0]) for row in rows)
+            for name, count in sorted(counts.items()):
+                logger.info("action=scoring_set_done set=%s rows=%d", name, count)
             client.execute(_INSERT_SQL, rows)
+            logger.info("action=snapshot_insert_done rows=%d", len(rows))
+
+            if self._cleanup_enabled:
+                self._clean_old_snapshots(client, rows)
         finally:
             client.disconnect()
 
-        logger.info("action=snapshot_insert_done rows=%d", len(rows))
         return len(rows)
+
+    def _clean_old_snapshots(self, writer: CHClient, rows: list) -> None:
+        try:
+            general_run_id = next(row[0] for row in rows if not row[0].startswith("preset:"))
+            keep_from = writer.execute(_RUN_DATE_SQL, {"run_id": general_run_id})[0][0]
+        except Exception as e:
+            logger.error("action=snapshot_cleanup_failed step=run_date error=%s", str(e))
+            return
+
+        for host in self._cfg["write_hosts"]:
+            try:
+                self._drop_old_partitions(host, keep_from)
+            except Exception as e:
+                logger.error("action=snapshot_cleanup_failed host=%s error=%s", host, str(e))
+
+    def _drop_old_partitions(self, host: str, keep_from) -> None:
+        client = self._create_client(host)
+        try:
+            days = [day for (day,) in client.execute(_OLD_DATES_SQL, {"keep_from": keep_from})]
+            for day in days:
+                client.execute(_DROP_PARTITION_SQL, {"day": day})
+                logger.info("action=snapshot_partition_dropped host=%s day=%s", host, day)
+        finally:
+            client.disconnect()
 
     async def run_snapshot(self) -> int:
         return await asyncio.to_thread(self._run_snapshot_sync)

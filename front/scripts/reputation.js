@@ -7,6 +7,7 @@ import {
     hasForbiddenNameChars,
     NAME_CHARS_ERROR,
     renderExcludeOptions,
+    renderPresetOptions,
     riskLabel,
 } from './feed_lists_api.js';
 
@@ -29,6 +30,7 @@ const paginationContainer = document.getElementById("pagination-container");
 
 const btnRepGeneral = document.getElementById("btnRepGeneral");
 const btnRepFilter = document.getElementById("btnRepFilter");
+const repPreset = document.getElementById("repPreset");
 const btnRepExport = document.getElementById("btnRepExport");
 const btnRepSaveList = document.getElementById("btnRepSaveList");
 const reputationFilterDialog = document.getElementById("reputationFilterDialog");
@@ -53,11 +55,13 @@ let currentFilters = {};
 let currentPage = 1;
 let currentTotalPages = 1;
 let currentSearchId = null;
+let currentPreset = "";
 
 const calcId = new URLSearchParams(window.location.search).get("calc");
 
 function withCalc(body) {
-    return calcId ? {...body, calc_id: calcId} : body;
+    if (calcId) return {...body, calc_id: calcId};
+    return currentPreset ? {...body, preset: currentPreset} : body;
 }
 
 function errorText(detail, status) {
@@ -465,6 +469,12 @@ btnRepGeneral.addEventListener("click", () => {
     window.location.href = "/templates/reputation.html";
 });
 
+repPreset.addEventListener("change", () => {
+    currentPreset = repPreset.value;
+    currentSearchId = null;
+    load(1);
+});
+
 const RECALC_URL = `${Auth.API_BASE}/ch/reputation/recalc`;
 const SETTINGS_URL = `${Auth.API_BASE}/api/settings`;
 let recalcTimer = null;
@@ -539,6 +549,8 @@ if (calcId) {
     btnRepGeneral.classList.remove("is-hidden");
     loadCalcMeta();
 } else {
+    repPreset.classList.remove("is-hidden");
+    renderPresetOptions(repPreset);
     btnRepRecalc.classList.remove("is-hidden");
     btnRepSettings.classList.remove("is-hidden");
     checkRecalcStatus();

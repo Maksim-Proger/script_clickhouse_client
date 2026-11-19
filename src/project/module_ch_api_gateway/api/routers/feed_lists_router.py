@@ -447,6 +447,8 @@ async def append_feed_list(
             filters = body.reputation_filters or ReputationFilters()
             filters.only_ip = False
             filters.calc_id = None
+            if filters.preset is not None:
+                raise ValueError("Для ручной репутации пресет не поддерживается")
             check_country_codes(filters)
             if meta["calc_source"]:
                 calc_source, calc_profile = meta["calc_source"], meta["calc_profile"]

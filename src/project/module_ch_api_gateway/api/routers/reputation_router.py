@@ -1,3 +1,5 @@
+from urllib import request
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
@@ -26,6 +28,7 @@ def get_reputation_service(request: Request) -> ReputationService:
         ch_client=request.app.state.ch_client,
         geoip_client=request.app.state.geoip_client,
         stream_client=request.app.state.ch_stream_client,
+        preset_keys=[p["key"] for p in request.app.state.reputation_presets],
     )
 
 
@@ -54,6 +57,14 @@ def _require_db(request: Request, filters: ReputationFilters) -> None:
         return
     if not request.app.state.feed_list_service.is_available:
         raise HTTPException(status_code=503, detail="БД временно недоступна")
+
+
+@router.get("/reputation/presets")
+async def list_reputation_presets(
+        request: Request,
+        user=Depends(get_current_user),
+):
+    return [{"key": p["key"], "title": p["title"]} for p in request.app.state.reputation_presets]
 
 
 @router.post("/reputation")

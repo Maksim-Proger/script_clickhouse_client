@@ -8,6 +8,7 @@ import {
     riskLabel,
     renderExcludeOptions,
     getCheckedExcludeIds,
+    renderPresetOptions,
     hasForbiddenNameChars,
     NAME_CHARS_ERROR,
     IP_REGEX,
@@ -44,6 +45,7 @@ const createManualDialog = document.getElementById("createManualDialog");
 
 const appendDialog = document.getElementById("appendDialog");
 const appendTitle = document.getElementById("appendTitle");
+const appendRepPreset = document.getElementById("appendRepPreset");
 const btnConfirmAppend = document.getElementById("btnConfirmAppend");
 
 let currentPage = 1;
@@ -644,6 +646,7 @@ function showAppendSource(source) {
     document.getElementById("appendBlock_blocked_ips").classList.toggle("is-hidden", source !== "blocked_ips");
     document.getElementById("appendBlock_reputation_calc").classList.toggle("is-hidden", source !== "reputation_calc");
     document.getElementById("appendBlock_reputation").classList.toggle("is-hidden", !fromReputation);
+    document.getElementById("appendRepPresetField").classList.toggle("is-hidden", source !== "reputation");
     document.getElementById("appendExcludeBlock").classList.toggle("is-hidden", source === "manual");
 }
 
@@ -758,6 +761,7 @@ function collectAppendPayload() {
     }
 
     if (excludeIds.length) filters.exclude_list_ids = excludeIds;
+    if (source === "reputation" && appendRepPreset.value) filters.preset = appendRepPreset.value;
     payload.reputation_filters = filters;
 
     if (source === "reputation_calc") {
@@ -765,6 +769,11 @@ function collectAppendPayload() {
         payload.calc_profile = appendFilterValue("appendCalcProfile") || null;
     }
     return payload;
+}
+
+function selectPreset(key) {
+    const known = [...appendRepPreset.options].some(o => o.value === key);
+    appendRepPreset.value = known ? key : "";
 }
 
 async function activeExcludeIds(ids) {
@@ -783,6 +792,7 @@ window.openAppendDialog = async (listId) => {
     appendTitle.textContent = `Изменение списка "${listsById.get(listId)?.name ?? "#" + listId}"`;
     setupAppendSources(listsById.get(listId));
     fillAppendForm(appendAllowed[0], null);
+    const presetsLoaded = renderPresetOptions(appendRepPreset);
 
     const excludeNote = document.getElementById("appendExcludeNote");
     const excludeContainer = document.getElementById("appendExcludeLists");
@@ -803,6 +813,10 @@ window.openAppendDialog = async (listId) => {
         setupAppendSources(card);
         const builtFromCalc = applied.source === "reputation" && applied.calc;
         fillAppendForm(builtFromCalc ? "reputation_calc" : applied.source, applied.filters, applied.calc);
+
+        await presetsLoaded;
+        if (appendListId !== listId) return;
+        selectPreset(applied.filters?.preset);
 
         const appliedIds = applied.filters?.exclude_list_ids || [];
         const keptIds = await activeExcludeIds(appliedIds);
