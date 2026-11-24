@@ -23,6 +23,7 @@ from project.module_ch_api_gateway.api.routers.reputation_router import (
 from project.module_ch_api_gateway.models.feed_list_schemas import (
     FeedListAppendRequest,
     FeedListCreateRequest,
+    FeedListItemsDeleteRequest,
     FeedListStatusRequest,
 )
 from project.module_ch_api_gateway.models.filters import CHReadFilters, ReputationFilters
@@ -267,6 +268,46 @@ async def get_feed_list_items(
         "status": meta["status"],
         "updated_at": meta["updated_at"],
     }
+
+
+@router.post("/{list_id}/items/delete")
+async def delete_feed_list_items(
+        list_id: int,
+        body: FeedListItemsDeleteRequest,
+        service: FeedListService = Depends(get_feed_list_service),
+        user=Depends(get_interactive_user),
+):
+    _require_db(service)
+
+    meta = await _get_list_or_404(service, list_id)
+    _reject_system(meta)
+
+    created_by = _user_key(user)
+
+    try:
+        result = await service.remove_from_list(
+            list_id,
+            body.values,
+            body.base_version,
+            created_by,
+        )
+    except (ListBusyError, ListArchivedError) as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    logger.info(
+        "action=feed_list_items_delete id=%d base_version=%d "
+        "items=%d user=%s",
+        list_id,
+        body.base_version,
+        len(set(body.values)),
+        created_by,
+    )
+
+    return result
 
 
 @router.get("/{list_id}/export")

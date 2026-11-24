@@ -403,6 +403,46 @@ class FeedListRepository:
                 list_id, from_version, to_version,
             )
 
+    async def get_existing_values(
+            self,
+            list_id: int,
+            version: int,
+            values: list[str],
+    ) -> set[str]:
+        async with self.db.pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT value
+                FROM feed_list_items
+                WHERE list_id = $1 AND version = $2 AND value = ANY($3::text[])
+                """,
+                list_id, version, values
+            )
+            return {row["value"] for row in rows}
+
+    async def copy_items_except(
+            self,
+            list_id: int,
+            from_version: int,
+            to_version: int,
+            values: list[str],
+    ):
+        async with self.db.pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO feed_list_items
+                    (
+                        list_id, version, value, value_type, value_net, score, 
+                        risk_level, asn, country, source, first_seen, last_seen
+                    )
+                SELECT list_id, $3, value, value_type, value_net, score, risk_level,
+                   asn, country, source, first_seen, last_seen 
+                FROM feed_list_items
+                WHERE list_id = $1 AND version = $2 AND NOT (value = ANY($4::text[]))
+                """,
+                list_id, from_version, to_version, values
+            )
+
     async def merge_items(self, list_id: int, version: int, items: list[tuple]) -> None:
         if not items:
             return
