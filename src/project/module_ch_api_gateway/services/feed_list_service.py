@@ -417,7 +417,8 @@ class FeedListService:
         self._background_tasks.add(task)
         task.add_done_callback(self._background_tasks.discard)
 
-    async def append_to_list(self, list_id: int, source_filters: dict, builder, created_by: str) -> dict:
+    async def append_to_list(
+            self, list_id: int, source_filters: dict, builder, created_by: str) -> dict:
         card = await self._guard_editable(list_id)
         base = card["current_version"]
         if base is None:
@@ -441,6 +442,71 @@ class FeedListService:
 
         self._run_build(list_id, new, build, base_version["item_count"], "Новых адресов нет, версия не создана")
         return self.serialize_list(await self.repo.get_catalog_row(list_id))
+
+    async def remove_from_list(
+            self,
+            list_id: int,
+            values: list[str],
+            base_version: int,
+            created_by: str,
+    ) -> dict:
+        card = await self._guard_editable(list_id)
+        base = card["current_version"]
+
+        if base is None:
+            raise ValueError("У списка нет актуальной версии, изменение недоступно")
+
+        if base != base_version:
+            raise ListBusyError("Список изменился, откройте элементы заново и повторите удаление")
+
+        values = list(dict.fromkeys(
+            value.strip() for value in values if value.strip()
+        ))
+
+        if not values:
+            raise ValueError("Не выбраны адреса для удаления")
+
+        base_version_row = await self.repo.get_version(list_id, base)
+        if base_version_row is None:
+            raise LookupError("Актуальная версия не найдена")
+
+        existing = await self.repo.get_existing_values(list_id, base, values)
+        missing = [value for value in values if value not in existing]
+
+        if missing:
+            raise ValueError(
+                "Часть выбранных адресов не найдена в актуальной версии, "
+                "обновите элементы списка"
+            )
+
+        try:
+            async with self.repo.db.pool.acquire() as conn:
+                async with conn.transaction():
+                    new = await self.repo.next_version_number(conn, list_id)
+
+                    await self.repo.create_version(
+                        conn,
+                        list_id,
+                        new,
+                        "building",
+                        "delete",
+                        base_version_row["source_filters"],
+                        created_by,
+                    )
+        except asyncpg.UniqueViolationError:
+            raise ListBusyError(
+                "Список сейчас обновляется, дождитесь завершения"
+            )
+
+        async def build():
+            await self.repo.copy_items_except(list_id, base, new, values)
+
+        self._run_build(list_id, new, build, None)
+
+        return self.serialize_list(
+            await self.repo.get_catalog_row(list_id)
+        )
+
 
     async def restore_version(self, list_id: int, version: int) -> dict:
         await self._guard_editable(list_id)

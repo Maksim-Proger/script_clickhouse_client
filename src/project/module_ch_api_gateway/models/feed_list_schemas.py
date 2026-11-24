@@ -24,3 +24,8 @@ class FeedListAppendRequest(BaseModel):
     reputation_filters: Optional[ReputationFilters] = None
     calc_source: Optional[Literal["dosgate", "ipban"]] = None
     calc_profile: Optional[str] = Field(None, max_length=150)
+
+class FeedListItemsDeleteRequest(BaseModel):
+    values: list[str] = Field(..., min_length=1, max_length=1_000_000)
+    base_version: int = Field(..., ge=1)
+
