@@ -8,6 +8,7 @@ import {
     riskLabel,
     renderExcludeOptions,
     getCheckedExcludeIds,
+    confirmExcludes,
     renderPresetOptions,
     hasForbiddenNameChars,
     NAME_CHARS_ERROR,
@@ -833,6 +834,7 @@ window.openAppendDialog = async (listId) => {
 };
 
 async function submitAppend() {
+    if (!confirmExcludes(document.getElementById("appendExcludeLists"))) return;
     let payload;
     try {
         payload = collectAppendPayload();
@@ -889,7 +891,6 @@ document.getElementById("btnConfirmCreateManual").addEventListener("click", asyn
 
     if (!name) return alert("Введите название списка");
     if (hasForbiddenNameChars(name)) return alert(NAME_CHARS_ERROR);
-    if (!values.length) return alert("Добавьте хотя бы одно значение");
 
     const btn = document.getElementById("btnConfirmCreateManual");
     btn.disabled = true;

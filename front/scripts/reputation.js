@@ -2,6 +2,7 @@ import * as Auth from './auth.js';
 import {initProfilePanel, requireAuthOrRedirect} from './app_shell.js';
 import {
     clearExcludeSelection,
+    confirmExcludes,
     createFeedList,
     getCheckedExcludeIds,
     hasForbiddenNameChars,
@@ -56,6 +57,7 @@ let currentPage = 1;
 let currentTotalPages = 1;
 let currentSearchId = null;
 let currentPreset = "";
+let currentLoad = 0;
 
 const calcId = new URLSearchParams(window.location.search).get("calc");
 
@@ -303,11 +305,13 @@ function goToPage(page) {
 }
 
 async function load(page = 1) {
+    const loadId = ++currentLoad;
     try {
         container.innerHTML = "<p style='padding:20px'>Загрузка...</p>";
         paginationContainer.innerHTML = "";
 
         const result = await fetchPage(page);
+        if (loadId !== currentLoad) return;
         const data = result.data || [];
         currentPage = result.page || page;
         currentSearchId = result.search_id || null;
@@ -326,7 +330,7 @@ async function load(page = 1) {
             btnRepSaveList.classList.toggle("is-hidden", !(result.total > 0));
         }
     } catch (e) {
-        if (e.message === "Unauthorized") return;
+        if (e.message === "Unauthorized" || loadId !== currentLoad) return;
         container.innerHTML = `<p style='padding:20px; color:var(--color-danger)'>Ошибка: ${e.message}</p>`;
         if (!calcId) snapshotMeta.textContent = "";
     }
@@ -447,6 +451,7 @@ document.getElementById("btnConfirmRepSaveList").addEventListener("click", async
 });
 
 document.getElementById("btnApplyRepFilters").addEventListener("click", () => {
+    if (!confirmExcludes(repExcludeLists)) return;
     currentFilters = collectFilters();
     currentSearchId = null;
     updateFilterActive();

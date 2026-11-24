@@ -69,11 +69,6 @@ async def remote_feed_list(
     version = meta["current_version"]
     item_count = meta["item_count"]
 
-    if item_count == 0:
-        logger.warning("action=remote_feed_list status=empty name=%s id=%d version=%d client=%s user=%s",
-                       name, list_id, version, client, who)
-        raise HTTPException(status_code=404, detail="В списке нет адресов")
-
     logger.info(
         "action=remote_feed_list status=start name=%s id=%d version=%d items=%d client=%s forwarded=%s user=%s",
         name, list_id, version, item_count, client, forwarded, who,
