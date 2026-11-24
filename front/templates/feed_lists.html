@@ -82,7 +82,10 @@
         <div id="feedItemsTable" class="dialog-table-wrap">Загрузка...</div>
         <div id="feedItemsPagination"></div>
         <div class="dialog-actions">
-            <button class="secondary-button" onclick="this.closest('dialog').close()">Закрыть</button>
+            <button type="button" class="secondary-button" id="btnEditItems">Изменить</button>
+            <button type="button" class="secondary-button is-hidden" id="btnCancelItemsEdit">Отмена</button>
+            <button type="button" class="primary-button is-hidden" id="btnDeleteItems">Удалить</button>
+            <button type="button" class="secondary-button" onclick="this.closest('dialog').close()">Закрыть</button>
         </div>
     </div>
 </dialog>

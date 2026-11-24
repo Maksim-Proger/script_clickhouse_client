@@ -49,8 +49,22 @@ const appendTitle = document.getElementById("appendTitle");
 const appendRepPreset = document.getElementById("appendRepPreset");
 const btnConfirmAppend = document.getElementById("btnConfirmAppend");
 
+const btnEditItems = document.getElementById("btnEditItems");
+const btnCancelItemsEdit = document.getElementById("btnCancelItemsEdit");
+const btnDeleteItems = document.getElementById("btnDeleteItems");
+
+
 let currentPage = 1;
 let currentItemsListId = null;
+let currentItemsVersion = null;
+let currentItemsPage = 1;
+let currentItemsTotal = 0;
+let currentItemsData = [];
+let currentItemsLoad = 0;
+let itemsEditMode = false;
+
+const selectedItemValues = new Set();
+
 let appendListId = null;
 let searchDebounce = null;
 let refreshTimer = null;
@@ -64,6 +78,7 @@ const expandedIds = new Set();
 const BUILD_KIND_LABELS = {
     create: "создание",
     append: "дополнение",
+    delete: "удаление адресов",
     restore: "восстановление",
     auto: "автообновление",
 };
@@ -422,79 +437,287 @@ async function searchIp(ip) {
     }
 }
 
+function canEditCurrentItems() {
+    const list = listsById.get(currentItemsListId);
+
+    return Boolean(
+        list &&
+        list.status === "active" &&
+        list.current_version &&
+        !list.busy &&
+        !list.is_system &&
+        currentItemsTotal > 0
+    );
+}
+
+function renderItemsEditControls() {
+    btnEditItems.classList.toggle(
+        "is-hidden",
+        itemsEditMode || !canEditCurrentItems()
+    );
+
+    btnCancelItemsEdit.classList.toggle("is-hidden", !itemsEditMode);
+    btnDeleteItems.classList.toggle("is-hidden", !itemsEditMode);
+
+    btnDeleteItems.disabled = selectedItemValues.size === 0;
+    btnDeleteItems.textContent = selectedItemValues.size
+        ? `Удалить (${selectedItemValues.size})`
+        : "Удалить";
+}
+
+function setItemsEditMode(enabled) {
+    itemsEditMode = enabled;
+    selectedItemValues.clear();
+
+    renderItemsEditControls();
+    renderItemsTable(currentItemsData);
+}
+
+function renderItemsTable(data) {
+    if (!data.length) {
+        itemsTable.innerHTML = "<p>Список пуст</p>";
+        return;
+    }
+
+    const selectionHeader = itemsEditMode ? "<th></th>" : "";
+
+    let html = `<table><thead><tr>
+        ${selectionHeader}
+        <th>Значение</th>
+        <th>Тип</th>
+        <th>Score</th>
+        <th>Риск</th>
+        <th>ASN</th>
+        <th>Страна</th>
+        <th>Источник</th>
+        <th>Впервые</th>
+        <th>Последний раз</th>
+    </tr></thead><tbody>`;
+
+    data.forEach(item => {
+        const selectionCell = itemsEditMode
+            ? `<td>
+                   <input
+                       type="checkbox"
+                       class="feed-item-select"
+                       value="${escapeHtml(item.value)}"
+                       aria-label="Выбрать ${escapeHtml(item.value)}"
+                       ${selectedItemValues.has(item.value) ? "checked" : ""}
+                   >
+               </td>`
+            : "";
+
+        html += `<tr>
+            ${selectionCell}
+            <td>${escapeHtml(item.value)}</td>
+            <td>${escapeHtml(item.value_type)}</td>
+            <td>${renderItemScore(item.score)}</td>
+            <td>${renderItemRisk(item.risk_level)}</td>
+            <td>${item.asn ? "AS" + item.asn : "-"}</td>
+            <td>${escapeHtml(item.country) || "-"}</td>
+            <td>${escapeHtml(item.source) || "-"}</td>
+            <td>${formatDate(item.first_seen)}</td>
+            <td>${formatDate(item.last_seen)}</td>
+        </tr>`;
+    });
+
+    html += "</tbody></table>";
+    itemsTable.innerHTML = html;
+}
+
 window.openListItems = async (listId) => {
     currentItemsListId = listId;
-    const name = foundListNames.get(listId) ?? listsById.get(listId)?.name ?? `#${listId}`;
+    currentItemsVersion = null;
+    currentItemsPage = 1;
+    currentItemsTotal = 0;
+    currentItemsData = [];
+    itemsEditMode = false;
+
+    selectedItemValues.clear();
+
+    const name =
+        foundListNames.get(listId) ??
+        listsById.get(listId)?.name ??
+        `#${listId}`;
+
     itemsTitle.textContent = `Элементы списка "${name}"`;
     itemsMeta.textContent = "";
     itemsTable.innerHTML = "Загрузка...";
     itemsPagination.innerHTML = "";
+
+    renderItemsEditControls();
+
     itemsDialog.showModal();
     await loadItems(1);
 };
 
 async function loadItems(page) {
+    const load = ++currentItemsLoad;
+
     try {
         const response = await Auth.authFetch(
-            `${Auth.API_BASE}/api/feed-lists/${currentItemsListId}/items?page=${page}&page_size=${ITEMS_PAGE_SIZE}`
+            `${Auth.API_BASE}/api/feed-lists/${currentItemsListId}/items`
+            + `?page=${page}&page_size=${ITEMS_PAGE_SIZE}`
         );
+
         if (!response.ok) {
             const err = await response.json().catch(() => ({}));
             throw new Error(err.detail || `HTTP ${response.status}`);
         }
+
         const result = await response.json();
-        const data = result.data || [];
 
-        itemsMeta.textContent =
-            `Всего: ${result.total} | версия v${result.version} | обновлён ${formatDate(result.updated_at)}`;
+        if (load !== currentItemsLoad) return;
 
-        if (!data.length) {
-            itemsTable.innerHTML = "<p>Список пуст</p>";
-            itemsPagination.innerHTML = "";
-            return;
+        if (
+            itemsEditMode &&
+            currentItemsVersion !== null &&
+            currentItemsVersion !== result.version
+        ) {
+            itemsEditMode = false;
+            selectedItemValues.clear();
+
+            alert(
+                "Версия списка изменилась. "
+                + "Режим редактирования отключён, выбор адресов сброшен."
+            );
         }
 
-        let html = `<table><thead><tr>
-            <th>Значение</th><th>Тип</th><th>Score</th><th>Риск</th>
-            <th>ASN</th><th>Страна</th><th>Источник</th>
-            <th>Впервые</th><th>Последний раз</th>
-        </tr></thead><tbody>`;
+        currentItemsVersion = result.version;
+        currentItemsPage = result.page || page;
+        currentItemsTotal = result.total || 0;
+        currentItemsData = result.data || [];
 
-        data.forEach(item => {
-            html += `<tr>
-                <td>${escapeHtml(item.value)}</td>
-                <td>${escapeHtml(item.value_type)}</td>
-                <td>${renderItemScore(item.score)}</td>
-                <td>${renderItemRisk(item.risk_level)}</td>
-                <td>${item.asn ? "AS" + item.asn : "-"}</td>
-                <td>${escapeHtml(item.country) || "-"}</td>
-                <td>${escapeHtml(item.source) || "-"}</td>
-                <td>${formatDate(item.first_seen)}</td>
-                <td>${formatDate(item.last_seen)}</td>
-            </tr>`;
-        });
+        itemsMeta.textContent =
+            `Всего: ${result.total} | версия v${result.version} | `
+            + `обновлён ${formatDate(result.updated_at)}`;
 
-        html += "</tbody></table>";
-        itemsTable.innerHTML = html;
+        renderItemsEditControls();
+        renderItemsTable(currentItemsData);
 
         itemsPagination.innerHTML = "";
+
         if ((result.total_pages || 1) > 1) {
             const pag = document.createElement("div");
             pag.className = "pagination";
+
             pag.innerHTML = `
-                <button id="btnItemsPrev" ${page <= 1 ? 'disabled' : ''}>← Назад</button>
-                <span>Страница ${page} из ${result.total_pages}</span>
-                <button id="btnItemsNext" ${page >= result.total_pages ? 'disabled' : ''}>Вперёд →</button>
+                <button
+                    id="btnItemsPrev"
+                    ${currentItemsPage <= 1 ? "disabled" : ""}
+                >← Назад</button>
+
+                <span>
+                    Страница ${currentItemsPage} из ${result.total_pages}
+                </span>
+
+                <button
+                    id="btnItemsNext"
+                    ${currentItemsPage >= result.total_pages ? "disabled" : ""}
+                >Вперёд →</button>
             `;
+
             itemsPagination.appendChild(pag);
-            pag.querySelector("#btnItemsPrev")?.addEventListener("click", () => loadItems(page - 1));
-            pag.querySelector("#btnItemsNext")?.addEventListener("click", () => loadItems(page + 1));
+
+            pag.querySelector("#btnItemsPrev")
+                ?.addEventListener(
+                    "click",
+                    () => loadItems(currentItemsPage - 1)
+                );
+
+            pag.querySelector("#btnItemsNext")
+                ?.addEventListener(
+                    "click",
+                    () => loadItems(currentItemsPage + 1)
+                );
         }
     } catch (e) {
-        if (e.message === "Unauthorized") return;
-        itemsTable.innerHTML = `<p style='color:var(--color-danger)'>Ошибка: ${escapeHtml(e.message)}</p>`;
+        if (e.message === "Unauthorized" || load !== currentItemsLoad) return;
+
+        itemsTable.innerHTML =
+            `<p style="color:var(--color-danger)">`
+            + `Ошибка: ${escapeHtml(e.message)}</p>`;
     }
 }
+
+btnEditItems.addEventListener("click", () => {
+    setItemsEditMode(true);
+});
+
+btnCancelItemsEdit.addEventListener("click", () => {
+    setItemsEditMode(false);
+});
+
+itemsTable.addEventListener("change", (event) => {
+    const checkbox = event.target.closest(".feed-item-select");
+
+    if (!checkbox || !itemsEditMode) return;
+
+    if (checkbox.checked) {
+        selectedItemValues.add(checkbox.value);
+    } else {
+        selectedItemValues.delete(checkbox.value);
+    }
+
+    renderItemsEditControls();
+});
+
+btnDeleteItems.addEventListener("click", async () => {
+    const values = [...selectedItemValues];
+    const baseVersion = currentItemsVersion;
+
+    if (!values.length || baseVersion === null) return;
+
+    const confirmed = confirm(
+        `Будет создана новая версия списка без ${values.length} адресов. `
+        + "Текущая версия сохранится в истории. Продолжить?"
+    );
+
+    if (!confirmed) return;
+
+    btnDeleteItems.disabled = true;
+    btnCancelItemsEdit.disabled = true;
+    btnDeleteItems.textContent = "Создание версии...";
+
+    try {
+        const response = await Auth.authFetch(
+            `${Auth.API_BASE}/api/feed-lists/${currentItemsListId}/items/delete`,
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    values,
+                    base_version: baseVersion,
+                }),
+            }
+        );
+
+        const result = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+            throw new Error(errorText(result.detail, response.status));
+        }
+
+        itemsEditMode = false;
+        selectedItemValues.clear();
+        itemsDialog.close();
+
+        alert(
+            `Создаётся новая версия списка без ${values.length} адресов`
+        );
+
+        await loadLists(currentPage);
+    } catch (e) {
+        if (e.message !== "Unauthorized") {
+            alert(`Ошибка удаления адресов: ${e.message}`);
+        }
+    } finally {
+        btnCancelItemsEdit.disabled = false;
+        renderItemsEditControls();
+    }
+});
 
 window.exportList = async (listId, format) => {
     try {
