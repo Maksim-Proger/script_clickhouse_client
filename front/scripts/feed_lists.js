@@ -41,6 +41,7 @@ const itemsTitle = document.getElementById("feedItemsTitle");
 const itemsMeta = document.getElementById("feedItemsMeta");
 const itemsTable = document.getElementById("feedItemsTable");
 const itemsPagination = document.getElementById("feedItemsPagination");
+const btnCloseItems = document.getElementById("btnCloseItems");
 
 const createManualDialog = document.getElementById("createManualDialog");
 
@@ -62,6 +63,8 @@ let currentItemsTotal = 0;
 let currentItemsData = [];
 let currentItemsLoad = 0;
 let itemsEditMode = false;
+let itemsDeletePending = false;
+let currentItemsTotalPages = 1;
 
 const selectedItemValues = new Set();
 
@@ -459,13 +462,47 @@ function renderItemsEditControls() {
     btnCancelItemsEdit.classList.toggle("is-hidden", !itemsEditMode);
     btnDeleteItems.classList.toggle("is-hidden", !itemsEditMode);
 
-    btnDeleteItems.disabled = selectedItemValues.size === 0;
-    btnDeleteItems.textContent = selectedItemValues.size
-        ? `Удалить (${selectedItemValues.size})`
-        : "Удалить";
+    btnEditItems.disabled = itemsDeletePending;
+    btnCancelItemsEdit.disabled = itemsDeletePending;
+    btnCloseItems.disabled = itemsDeletePending;
+
+    btnDeleteItems.disabled =
+        itemsDeletePending || selectedItemValues.size === 0;
+
+    if (itemsDeletePending) {
+        btnDeleteItems.textContent = "Создание версии...";
+    } else {
+        btnDeleteItems.textContent = selectedItemValues.size
+            ? `Удалить (${selectedItemValues.size})`
+            : "Удалить";
+    }
+}
+
+function applyItemsDeletePending() {
+    renderItemsEditControls();
+
+    itemsTable.querySelectorAll(".feed-item-select").forEach(checkbox => {
+        checkbox.disabled = itemsDeletePending;
+    });
+
+    const previous = itemsPagination.querySelector("#btnItemsPrev");
+    const next = itemsPagination.querySelector("#btnItemsNext");
+
+    if (previous) {
+        previous.disabled =
+            itemsDeletePending || currentItemsPage <= 1;
+    }
+
+    if (next) {
+        next.disabled =
+            itemsDeletePending ||
+            currentItemsPage >= currentItemsTotalPages;
+    }
 }
 
 function setItemsEditMode(enabled) {
+    if (itemsDeletePending) return;
+
     itemsEditMode = enabled;
     selectedItemValues.clear();
 
@@ -532,6 +569,9 @@ window.openListItems = async (listId) => {
     currentItemsTotal = 0;
     currentItemsData = [];
     itemsEditMode = false;
+    currentItemsTotalPages = 1;
+    itemsDeletePending = false;
+
 
     selectedItemValues.clear();
 
@@ -552,6 +592,8 @@ window.openListItems = async (listId) => {
 };
 
 async function loadItems(page) {
+    if (itemsDeletePending) return;
+
     const load = ++currentItemsLoad;
 
     try {
@@ -585,6 +627,7 @@ async function loadItems(page) {
 
         currentItemsVersion = result.version;
         currentItemsPage = result.page || page;
+        currentItemsTotalPages = result.total_pages || 1;
         currentItemsTotal = result.total || 0;
         currentItemsData = result.data || [];
 
@@ -648,10 +691,16 @@ btnCancelItemsEdit.addEventListener("click", () => {
     setItemsEditMode(false);
 });
 
+itemsDialog.addEventListener("cancel", (event) => {
+    if (itemsDeletePending) {
+        event.preventDefault();
+    }
+});
+
 itemsTable.addEventListener("change", (event) => {
     const checkbox = event.target.closest(".feed-item-select");
 
-    if (!checkbox || !itemsEditMode) return;
+    if (!checkbox || !itemsEditMode || itemsDeletePending) return;
 
     if (checkbox.checked) {
         selectedItemValues.add(checkbox.value);
@@ -663,6 +712,8 @@ itemsTable.addEventListener("change", (event) => {
 });
 
 btnDeleteItems.addEventListener("click", async () => {
+    if (itemsDeletePending) return;
+
     const values = [...selectedItemValues];
     const baseVersion = currentItemsVersion;
 
@@ -675,9 +726,8 @@ btnDeleteItems.addEventListener("click", async () => {
 
     if (!confirmed) return;
 
-    btnDeleteItems.disabled = true;
-    btnCancelItemsEdit.disabled = true;
-    btnDeleteItems.textContent = "Создание версии...";
+    itemsDeletePending = true;
+    applyItemsDeletePending();
 
     try {
         const response = await Auth.authFetch(
@@ -714,8 +764,8 @@ btnDeleteItems.addEventListener("click", async () => {
             alert(`Ошибка удаления адресов: ${e.message}`);
         }
     } finally {
-        btnCancelItemsEdit.disabled = false;
-        renderItemsEditControls();
+        itemsDeletePending = false;
+        applyItemsDeletePending();
     }
 });
 
