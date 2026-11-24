@@ -167,9 +167,7 @@ async def create_feed_list(
 
     try:
         if body.source_type == "manual":
-            if not body.values:
-                raise ValueError("Для ручного списка нужно передать значения (values)")
-            return await service.create_manual(body.name, body.description, created_by, body.values)
+            return await service.create_manual(body.name, body.description, created_by, body.values or [])
 
         if body.source_type == "reputation":
             filters = body.reputation_filters or ReputationFilters()

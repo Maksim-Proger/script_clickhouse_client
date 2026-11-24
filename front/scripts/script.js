@@ -3,6 +3,7 @@ import { initProfilePanel, refreshCurrentUser } from './app_shell.js';
 import {
     renderExcludeOptions,
     getCheckedExcludeIds,
+    confirmExcludes,
     createFeedList,
     hasForbiddenNameChars,
     NAME_CHARS_ERROR,
@@ -381,6 +382,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     async function exportData() {
         if (!validateExportPeriod()) return;
+        if (!confirmExcludes(exportExcludeLists)) return;
 
         const exactDate = document.getElementById("exportFilterDate").value || null;
         const fromDate = document.getElementById("exportFilterDateFrom").value;
@@ -469,6 +471,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     btnApplyFilters.addEventListener("click", () => {
+        if (!confirmExcludes(chExcludeLists)) return;
         rchFilterDialog.close();
         currentSearchId = null;
         requestCH(1);

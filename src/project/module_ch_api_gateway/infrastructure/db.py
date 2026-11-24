@@ -55,7 +55,7 @@ CREATE INDEX IF NOT EXISTS idx_profile_states_profile ON profile_states (profile
 CREATE_FEED_LISTS_TABLE = """
 CREATE TABLE IF NOT EXISTS feed_lists (
     id             SERIAL PRIMARY KEY,
-    name           VARCHAR(200) NOT NULL UNIQUE,
+    name           VARCHAR(200) NOT NULL,
     description    TEXT NOT NULL DEFAULT '',
     created_by     VARCHAR(150) NOT NULL,
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -223,6 +223,8 @@ UPGRADE_SEARCH_TABLES = [
 ]
 
 UPGRADE_FEED_TABLES = [
+    "ALTER TABLE feed_lists DROP CONSTRAINT IF EXISTS feed_lists_name_key",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_feed_lists_name ON feed_lists (name) WHERE status <> 'deleting'",
     "ALTER TABLE feed_lists ADD COLUMN IF NOT EXISTS last_error TEXT",
     "ALTER TABLE feed_list_items ADD COLUMN IF NOT EXISTS value_net INET",
     "UPDATE feed_list_items SET value_net = value::inet WHERE value_net IS NULL",

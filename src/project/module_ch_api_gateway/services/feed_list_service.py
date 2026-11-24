@@ -14,7 +14,6 @@ from project.module_ch_api_gateway.infrastructure.feed_list_repo import FeedList
 
 logger = logging.getLogger("ch-api-gateway.feed_lists")
 
-MAX_EXCLUDE_LISTS = 20
 MAX_SOURCE_ROWS = 1_000_000
 MAX_MANUAL_VALUES = 1_000_000
 DEFAULT_PERIOD_DAYS = 7
@@ -217,8 +216,6 @@ class FeedListService:
     async def resolve_exclude_lists(self, list_ids: list[int]) -> Optional[list[dict]]:
         if not list_ids:
             return None
-        if len(list_ids) > MAX_EXCLUDE_LISTS:
-            raise ValueError(f"Можно исключить не более {MAX_EXCLUDE_LISTS} списков за раз")
 
         rows = await self.repo.get_lists_by_ids(list_ids)
         found = {r["id"] for r in rows}
@@ -400,12 +397,12 @@ class FeedListService:
         return card
 
     def _run_build(self, list_id: int, version: int, builder,
-                   base_count: int = 0, empty_error: str = "Выборка пуста") -> None:
+                   base_count: Optional[int] = 0, empty_error: str = "Выборка пуста") -> None:
         async def runner():
             try:
                 await builder()
                 count = await self.repo.count_items(list_id, version)
-                if count <= base_count:
+                if base_count is not None and count <= base_count:
                     logger.info("action=feed_list_version_skipped id=%d version=%d items=%d reason=no_new_items",
                                 list_id, version, count)
                     await self.fail_version(list_id, version, empty_error)
@@ -459,12 +456,12 @@ class FeedListService:
             async with self.repo.db.pool.acquire() as conn:
                 await load_version(conn, list_id, version, started["blob"])
 
-        self._run_build(list_id, version, build)
+        self._run_build(list_id, version, build, None)
         return self.serialize_list(await self.repo.get_catalog_row(list_id))
 
     async def create_manual(self, name: str, description: str, created_by: str, values: list[str]) -> dict:
         items = await asyncio.to_thread(build_items_from_values, values)
-        if not items:
+        if values and not items:
             raise ValueError("Выборка пуста, список не создан")
 
         async with self.repo.db.pool.acquire() as conn:
